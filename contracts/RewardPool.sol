@@ -42,10 +42,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
      * @param _rewardAdmin reward administrator
      */
 
-    constructor(
-        address _rewardToken,
-        address _rewardAdmin
-    ) public {
+    constructor(address _rewardToken, address _rewardAdmin) public {
         rewardToken = IERC20(_rewardToken);
         stakeToken = _rewardToken;
         setRewardDistribution(_rewardAdmin);
@@ -105,7 +102,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
     /**
      * @dev stake function, starts farming on stale, user stake two tokens: "Emiswap LP" + "ESW"
      * @param lp address of Emiswap LP token
-     * @param lpAmount amount of Emiswap LP tokens 
+     * @param lpAmount amount of Emiswap LP tokens
      * @param amount amount of ESW tokens
      */
 
@@ -134,7 +131,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         getReward();
     }
 
-    function getReward() nonReentrant public updateReward(msg.sender) {
+    function getReward() public nonReentrant updateReward(msg.sender) {
         /* uint256 reward = earned(msg.sender);
         if (reward > 0) {
             rewards[msg.sender] = 0;

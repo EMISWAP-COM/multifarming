@@ -99,10 +99,7 @@ describe("Farming", function () {
 
     it("run reward simple ERC-20", async function () {
         const REWARDPOOL = await ethers.getContractFactory("RewardPool");
-        RewardPool = await REWARDPOOL.deploy(
-            esw.address,
-            owner.address
-        );
+        RewardPool = await REWARDPOOL.deploy(esw.address, owner.address);
         await RewardPool.deployed();
 
         /* await RewardPool.setEmiPriceData(
@@ -127,10 +124,23 @@ describe("Farming", function () {
         let wbtc_weth_pool = await lpInstance.attach(pools[1].pool);
 
         //await RewardPool.connect(Alice).stake(, tokens(100), tokens(100));
-        console.log("wbtc_uni_pool (40 BTC + 100000 UNI = )", (await wbtc_uni_pool.balanceOf(owner.address)).toString(), "has no direct price in USDT");
-        console.log("wbtc_weth_pool (100 BTC + 10000 WETH ~ 20000 WETH ~ (using weth-usdt 1:2000) 40000000 USDT ), \ntotal LP's =", (await wbtc_weth_pool.balanceOf(owner.address)).toString(), 
-            "1 LP = ", BigNumber.from("40000000000000").mul(BigNumber.from("1000000000000000000")).div(await wbtc_weth_pool.balanceOf(owner.address)).div(BigNumber.from("1000000")).toString(), "USDT");
-        
+        console.log(
+            "wbtc_uni_pool (40 BTC + 100000 UNI = )",
+            (await wbtc_uni_pool.balanceOf(owner.address)).toString(),
+            "has no direct price in USDT"
+        );
+        console.log(
+            "wbtc_weth_pool (100 BTC + 10000 WETH ~ 20000 WETH ~ (using weth-usdt 1:2000) 40000000 USDT ), \ntotal LP's =",
+            (await wbtc_weth_pool.balanceOf(owner.address)).toString(),
+            "1 LP = ",
+            BigNumber.from("40000000000000")
+                .mul(BigNumber.from("1000000000000000000"))
+                .div(await wbtc_weth_pool.balanceOf(owner.address))
+                .div(BigNumber.from("1000000"))
+                .toString(),
+            "USDT"
+        );
+
         // send 10 LP to Alice, 1 LP to Bob
         await wbtc_weth_pool.transfer(Alice.address, tokens("10"));
         await wbtc_weth_pool.transfer(Bob.address, tokens("1"));
@@ -145,9 +155,6 @@ describe("Farming", function () {
         console.log("Alice stakes", await RewardPool.getStakedTokens(Alice.address));
         console.log("Bob stakes", await RewardPool.getStakedTokens(Bob.address));
 
-        // TODO: review staked tokens-amounts
-        // TODO: withdraw staked tokens-amounts
-
         /*expect((await RewardPool.getStakedValuesinUSD(Alice.address))[0].toString()).to.be.equal("19999900");
         expect((await RewardPool.getStakedValuesinUSD(Alice.address))[1].toString()).to.be.equal("59999700");
 
@@ -157,6 +164,9 @@ describe("Farming", function () {
             "whole balance",
             (await RewardPool.getStakedValuesinUSD(Alice.address))[1].toString()
         ); */
+
+        // TODO: get prices between tokens on stake
+        // TODO: make reward and test it
 
         await network.provider.send("evm_increaseTime", [2592000]); // 30 days to pass
         await network.provider.send("evm_mine");
