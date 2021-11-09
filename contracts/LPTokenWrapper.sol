@@ -2,19 +2,43 @@
 
 pragma solidity ^0.6.2;
 
-//import "hardhat/console.sol";
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./interfaces/IEmiswap.sol";
+
+contract IERC20Extented is IERC20 {
+    function decimals() public view returns (uint8);
+}
 
 contract LPTokenWrapper {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    address public stakeToken; // is the main token (ESW)
+    // Stable coin
+    address public stableCoin;
 
-    uint256 private _totalSupply; // main token (ESW) supply
-    //mapping(address => uint256) private _balances;
+    // path to stable on Emiswap dex
+    struct path {
+        address[] route;
+        bool isActive;
+    }
+
+    // Routs to stable coin
+    path[] public routeToStable;
+
+    // save hash of path to check unique
+    mapping(bytes32 => bool) public availableRoutes;
+
+    // EmiFactory
+    IEmiswapRegistry public emiFactory;
+
+    // is the main token (ESW)
+    address public stakeToken;
+
+    // main token (ESW) supply
+    uint256 private _totalSupply;
 
     // wallet -> lp -> amount
     mapping(address => mapping(address => uint256)) private _balances;
@@ -28,17 +52,51 @@ contract LPTokenWrapper {
         return _totalSupply;
     }
 
-    // deprecated
-    function balanceOf(address account) public pure returns (uint256) {
-        return 0;
-    }
-
     function balanceOfStakeToken(address account) public view returns (uint256) {
         return _balances[account][stakeToken];
     }
 
     function balanceOfLPToken(address account, address lp) public view returns (uint256) {
         return _balances[account][lp];
+    }
+
+    /**
+     * @dev admin function to setup price routes to the "stableCoin"
+     * @param route - route must ends with "stableCoin", and can consist only of 1 element - "stableCoin"
+     */
+
+    function addRoutes(address[] memory route) public virtual {
+        require(route.length > 0 && route[route.length - 1] == stableCoin, "set route to stable");
+        require(!availableRoutes[keccak256(abi.encodePacked(route))], "route already added");
+        availableRoutes[keccak256(abi.encodePacked(route))] = true;
+        routeToStable.push(path(route, true));
+    }
+
+    /**
+     * @dev activate/deactivate route
+     * @param _route array of tokens
+     * @param _isActive change to true/false enable/disable
+     */
+
+    function activationRoute(address[] memory _route, bool _isActive) public virtual {
+        for (uint256 index = 0; index < routeToStable.length; index++) {
+            if (
+                keccak256(abi.encodePacked(routeToStable[index].route)) == keccak256(abi.encodePacked(_route)) &&
+                routeToStable[index].isActive != _isActive
+            ) {
+                routeToStable[index].isActive = _isActive;
+                return;
+            }
+        }
+    }
+
+    function getRoute(address[] memory _route) public view returns (address[] memory routeRes, bool isActiveRes) {
+        for (uint256 index = 0; index < routeToStable.length; index++) {
+            if (keccak256(abi.encodePacked(routeToStable[index].route)) == keccak256(abi.encodePacked(_route))) {
+                routeRes = routeToStable[index].route;
+                isActiveRes = routeToStable[index].isActive;
+            }
+        }
     }
 
     /**
@@ -53,6 +111,8 @@ contract LPTokenWrapper {
         uint256 lpAmount,
         uint256 amount
     ) public virtual {
+        require(emiFactory.isPool(lp), "token incorrect or not LP");
+        // TODO: is LP token has price in USDT?        
         // get tokens
         IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
@@ -68,6 +128,16 @@ contract LPTokenWrapper {
             stakeTokens.push(lp);
             tokensIndex[lp] = stakeTokens.length;
         }
+    }
+
+    function getLPValue(address _lp, uint256 _lpAmount) public view returns (uint256 lpValue) {
+        for (uint256 index = 0; index < 1; index++) {
+            uint256 oneStableValue = 10**IERC20Extented(stableCoin).decimals();
+            uint256 oneTokenValue = 10**IERC20Extented(IEmiswap(_lp).tokens(index)).decimals();
+            uint256 tokenPrice = getTokenPrice(IEmiswap(_lp).tokens(index));
+            uint256 tokensInLP = getTokenAmountinLP(_lp, _lpAmount);
+            lpValue = 2 * (  tokensInLP * tokenPrice / oneTokenValue );
+        } // TODO: make getTokenPrice, getTokensinLP
     }
 
     function getStakedTokens(address wallet) public view returns (address[] memory tokens) {

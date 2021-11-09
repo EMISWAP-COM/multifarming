@@ -10,7 +10,7 @@
     "deploy-kovanUSDT": "npx hardhat run scripts/deploy1TUSDT.js --network kovan",
     "prettier-test": "npx prettier --write test --print-width 120 --tab-width 4",
     "prettier-scripts": "npx prettier --write scripts --print-width 120 --tab-width 4",
-    "prettier-sol": "prettier --write \"contracts/**/*.sol\" --print-width 120",
+    "prettier-sol": "prettier --write \"contracts/**/*.sol\" --print-width 120 --tab-width 4",
     "contract-flatten": "npx hardhat flatten contracts/RewardPool.sol > flat/RewardPool.flat.sol"
   },
   "dependencies": {

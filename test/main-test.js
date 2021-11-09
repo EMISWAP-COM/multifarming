@@ -24,6 +24,14 @@ describe("Farming", function () {
         usdt = await MOCKUSDT.deploy();
         await usdt.deployed();
 
+        const MOCKUSDC = await ethers.getContractFactory("MockUSDT");
+        usdc = await MOCKUSDC.deploy();
+        await usdc.deployed();
+
+        const MOCKDAI = await ethers.getContractFactory("MockWETH");
+        dai = await MOCKDAI.deploy();
+        await dai.deployed();
+
         const MOCKWETH = await ethers.getContractFactory("MockWETH");
         weth = await MOCKWETH.deploy();
         await weth.deployed();
@@ -36,6 +44,10 @@ describe("Farming", function () {
         uni = await MOCKUNI.deploy();
         await uni.deployed();
 
+        const MOCKWMATIC = await ethers.getContractFactory("MockWETH");
+        wmatic = await MOCKWMATIC.deploy();
+        await wmatic.deployed();
+
         const EMIFACTORY = await ethers.getContractFactory("EmiFactory");
         emiFactory = await EMIFACTORY.deploy();
         await emiFactory.deployed();
@@ -43,6 +55,24 @@ describe("Farming", function () {
         const EMIROUTER = await ethers.getContractFactory("EmiRouter");
         emiRouter = await EMIROUTER.deploy(emiFactory.address, weth.address);
         await emiRouter.deployed();
+        /**
+         available pairs
+            wbtc-weth
+            wbtc-uni
+            esw-weth
+            weth-usdt
+            wmatic-esw
+            dai-usdc
+          
+         routes to usdt:
+            wbtc-weth-usdt
+            esw-weth-usdt
+            uni-wbtc-weth-usdt
+            wmatic-esw-weth-usdt
+
+         no routes to usdt:
+            dai-usdc
+         */
 
         // wbtc-weth Add liquidity (100:10000)
         await wbtc.approve(emiRouter.address, tokensDec("100", 8));
@@ -95,12 +125,79 @@ describe("Farming", function () {
             tokens("0"),
             ZERO_ADDRESS
         );
+
+        // wmatic-esw Add liquidity (10000:250000)
+        await wmatic.approve(emiRouter.address, tokensDec("10000", 18));
+        await esw.approve(emiRouter.address, tokensDec("250000", 18));
+        await emiRouter.addLiquidity(
+            wmatic.address,
+            esw.address,
+            tokensDec("10000", 18),
+            tokensDec("250000", 18),
+            tokens("0"),
+            tokens("0"),
+            ZERO_ADDRESS
+        );
+
+        // dai-usdc Add liquidity (100000:100000)
+        await dai.approve(emiRouter.address, tokensDec("100000", 18));
+        await usdc.approve(emiRouter.address, tokensDec("100000", 6));
+        await emiRouter.addLiquidity(
+            dai.address,
+            usdc.address,
+            tokensDec("100000", 18),
+            tokensDec("100000", 6),
+            tokens("0"),
+            tokens("0"),
+            ZERO_ADDRESS
+        );
     });
 
     it("run reward simple ERC-20", async function () {
         const REWARDPOOL = await ethers.getContractFactory("RewardPool");
-        RewardPool = await REWARDPOOL.deploy(esw.address, owner.address);
+        RewardPool = await REWARDPOOL.deploy(esw.address, owner.address, emiFactory.address, usdt.address);
         await RewardPool.deployed();
+
+        /* add routes
+            wbtc-weth-usdt
+            esw-weth-usdt
+            uni-wbtc-weth-usdt
+            wmatic-esw-weth-usdt
+        */
+        await RewardPool.addRoutes([wbtc.address, weth.address, usdt.address]);
+        await RewardPool.addRoutes([esw.address, weth.address, usdt.address]);
+        await RewardPool.addRoutes([uni.address, wbtc.address, weth.address, usdt.address]);
+        await RewardPool.addRoutes([wmatic.address, esw.address, weth.address, usdt.address]);
+
+        // try to deactivate route
+        let routeArr = [wmatic.address, esw.address, weth.address, usdt.address];
+        let resgetRouteBefore = await RewardPool.connect(Alice).getRoute(routeArr);
+        await RewardPool.activationRoute(routeArr, false);
+        let resgetRouteAfter = await RewardPool.connect(Alice).getRoute(routeArr);
+
+        // check route correctness
+        for (const iterator of routeArr.keys()) {
+            expect(routeArr[iterator]).to.be.equal(resgetRouteBefore.routeRes[iterator]);
+        }
+
+        // check isActive parameter changed
+        expect(resgetRouteBefore.isActiveRes).to.be.equal(true);
+        expect(resgetRouteAfter.isActiveRes).to.be.equal(false);
+
+        // try to duplicate
+        await expect(RewardPool.addRoutes([wbtc.address, weth.address, usdt.address])).to.be.revertedWith(
+            "route already added"
+        );
+
+        // try to add route not to usdt
+        await expect(RewardPool.addRoutes([wbtc.address, weth.address, uni.address])).to.be.revertedWith(
+            "set route to stable"
+        );
+
+        // try to add route from ton owner
+        await expect(RewardPool.connect(Alice).addRoutes([esw.address, weth.address, usdt.address])).to.be.revertedWith(
+            "Ownable: caller is not the owner"
+        );
 
         /* await RewardPool.setEmiPriceData(
             emiFactory.address, // kovan factory
@@ -148,7 +245,14 @@ describe("Farming", function () {
         // prepare for staking
         await wbtc_weth_pool.connect(Alice).approve(RewardPool.address, tokens("10"));
         await wbtc_weth_pool.connect(Bob).approve(RewardPool.address, tokens("1"));
+        // prepare for incorrect stake
+        await wbtc.transfer(Alice.address, tokensDec("10", 8));
+        await wbtc.connect(Alice).approve(RewardPool.address, tokens("10"));
 
+        // incorrect stake
+        await expect(RewardPool.connect(Alice).stake(wbtc.address, tokens(10), tokens(10))).to.be.revertedWith("token incorrect or not LP");
+        
+        // correct stake 
         await RewardPool.connect(Alice).stake(wbtc_weth_pool.address, tokens(10), tokens(10));
         await RewardPool.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), tokens(1));
 

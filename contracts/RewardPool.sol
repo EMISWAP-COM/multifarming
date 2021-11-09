@@ -12,7 +12,6 @@ import "./libraries/EmiswapLib.sol";
 //import "hardhat/console.sol";
 
 contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuard {
-    address public emiFactory;
     uint256 public totalStakeLimit; // max value in USD coin (last in route), rememeber decimals!
     address[] public route;
     uint8 marketID;
@@ -42,12 +41,19 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
      * @param _rewardAdmin reward administrator
      */
 
-    constructor(address _rewardToken, address _rewardAdmin) public {
+    constructor(
+        address _rewardToken,
+        address _rewardAdmin,
+        address _emiFactory,
+        address _stableCoin
+    ) public {
         rewardToken = IERC20(_rewardToken);
         stakeToken = _rewardToken;
         setRewardDistribution(_rewardAdmin);
         stakeTokens.push(_rewardToken);
-        console.log("1 stakeTokens %s", stakeToken);
+        emiFactory = IEmiswapRegistry(_emiFactory);
+        stableCoin = _stableCoin;
+        //console.log("1 stakeTokens %s", stakeToken);
         //console.log("1 stakeTokens.length %s", stakeTokens.length);
         //minPriceAmount = _minPriceAmount;
     }
@@ -62,7 +68,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         _;
     }
 
-    function setEmiPriceData(address _emiFactory, address[] memory _route) public onlyOwner {
+    /* function setEmiPriceData(address _emiFactory, address[] memory _route) public onlyOwner {
         if (emiFactory != _emiFactory) {
             emiFactory = _emiFactory;
         }
@@ -72,7 +78,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         for (uint256 index = 0; index < _route.length; index++) {
             route.push(_route[index]);
         }
-    }
+    } */
 
     function setMinPriceAmount(uint256 newMinPriceAmount) public onlyOwner {
         minPriceAmount = newMinPriceAmount;
@@ -94,7 +100,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
 
     function earned(address account) public view returns (uint256) {
         return
-            balanceOf(account).mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(
+            balanceOfStakeToken(account).mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(
                 rewards[account]
             );
     }
@@ -157,6 +163,14 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         emit RewardAdded(reward);
     }
 
+    function addRoutes(address[] memory _route) public override onlyOwner {
+        super.addRoutes(_route);
+    }
+
+    function activationRoute(address[] memory _route, bool _isActive) public override onlyOwner {
+        super.activationRoute(_route, _isActive);
+    }
+
     function setPeriodStop(uint256 _periodStop) external onlyRewardDistribution {
         require(periodStop <= periodFinish, "Incorrect stop");
         periodStop = _periodStop;
@@ -166,7 +180,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         uint256 price = getAmountOut(minPriceAmount, route); /*1e18 default value of ESW, first of route always ESW*/
         // simple ERC-20
         if (tokenMode == 0) {
-            senderStake = balanceOf(wallet).mul(price).div(minPriceAmount);
+            senderStake = balanceOfStakeToken(wallet).mul(price).div(minPriceAmount);
             totalStake = totalSupply().mul(price).div(minPriceAmount);
         }
         if (tokenMode == 1) {
@@ -180,7 +194,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
             senderStake = IEmiswap(stakeToken)
                 .getBalanceForAddition(IERC20(route[0]))
                 .mul(2)
-                .mul(balanceOf(wallet).mul(1e18).div(IERC20(stakeToken).totalSupply()))
+                .mul(balanceOfStakeToken(wallet).mul(1e18).div(IERC20(stakeToken).totalSupply()))
                 .div(1e18)
                 .mul(price)
                 .div(minPriceAmount);
@@ -195,7 +209,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
     }
 
     function getAmountOut(uint256 amountIn, address[] memory path) public view returns (uint256) {
-        return EmiswapLib.getAmountsOut(emiFactory, amountIn, path)[path.length - 1];
+        return EmiswapLib.getAmountsOut(address(emiFactory), amountIn, path)[path.length - 1];
     }
 
     // ------------------------------------------------------------------------
