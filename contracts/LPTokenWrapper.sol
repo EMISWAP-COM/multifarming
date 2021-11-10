@@ -7,9 +7,10 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/IEmiswap.sol";
+import "./libraries/EmiswapLib.sol";
 
-contract IERC20Extented is IERC20 {
-    function decimals() public view returns (uint8);
+interface IERC20Extented is IERC20 {
+    function decimals() external view returns (uint8);
 }
 
 contract LPTokenWrapper {
@@ -90,6 +91,13 @@ contract LPTokenWrapper {
         }
     }
 
+    /**
+     * @dev get route info
+     * @param _route input route
+     * @return routeRes stored route if found
+     * @return isActiveRes is active flag
+     */
+
     function getRoute(address[] memory _route) public view returns (address[] memory routeRes, bool isActiveRes) {
         for (uint256 index = 0; index < routeToStable.length; index++) {
             if (keccak256(abi.encodePacked(routeToStable[index].route)) == keccak256(abi.encodePacked(_route))) {
@@ -112,7 +120,7 @@ contract LPTokenWrapper {
         uint256 amount
     ) public virtual {
         require(emiFactory.isPool(lp), "token incorrect or not LP");
-        // TODO: is LP token has price in USDT?        
+        // TODO: is LP token has price in USDT?
         // get tokens
         IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
@@ -131,13 +139,77 @@ contract LPTokenWrapper {
     }
 
     function getLPValue(address _lp, uint256 _lpAmount) public view returns (uint256 lpValue) {
-        for (uint256 index = 0; index < 1; index++) {
-            uint256 oneStableValue = 10**IERC20Extented(stableCoin).decimals();
-            uint256 oneTokenValue = 10**IERC20Extented(IEmiswap(_lp).tokens(index)).decimals();
-            uint256 tokenPrice = getTokenPrice(IEmiswap(_lp).tokens(index));
-            uint256 tokensInLP = getTokenAmountinLP(_lp, _lpAmount);
-            lpValue = 2 * (  tokensInLP * tokenPrice / oneTokenValue );
-        } // TODO: make getTokenPrice, getTokensinLP
+        for (uint256 i = 0; i < 1; i++) {
+            address componentToken = address(IEmiswap(_lp).tokens(i));
+            uint256 oneTokenValue = 10**uint256(IERC20Extented(componentToken).decimals());
+            uint256 tokenPrice = getTokenPrice(componentToken);
+            uint256 tokensInLP = getTokenAmountinLP(_lp, _lpAmount, componentToken);
+            // calc token value from one of parts and multiply 2
+            lpValue = 2 * ((tokensInLP * tokenPrice) / oneTokenValue);
+            if (lpValue > 0) {
+                break;
+            }
+        } 
+    }
+
+    /**
+     * @dev get token price using existing token routes
+     * @param token address of token
+     */
+    function getTokenPrice(address token) public view returns (uint256 tokenPrice) {
+        require(IERC20Extented(token).decimals() > 0, "token must have decimals");
+        uint256 oneTokenValue = 10**uint256(IERC20Extented(token).decimals());
+        
+        // go throuout all path and find minimal token price > 0
+        for (uint256 i = 0; i < routeToStable.length; i++) {
+            if (routeToStable[i].isActive) {
+                
+                // route must not contain token
+                bool skipRoute;
+                for (uint256 k = 0; k < routeToStable[i].route.length; k++) {
+                    if (routeToStable[i].route[k] == token) {
+                        skipRoute = true;
+                        break;
+                    }
+                }
+                if (skipRoute) {
+                    break;
+                }
+                
+                // prepare route to get price from token
+                address[] memory route = new address[](routeToStable[i].route.length + 1);
+                route[0] = token;
+                for (uint256 j = 1; j < route.length; j++) {
+                    route[j] = routeToStable[i].route[j - 1];
+                }
+
+                // get price by route
+                uint256 _price = EmiswapLib.getAmountsOut(address(emiFactory), oneTokenValue, route)[route.length - 1];
+                
+                // choose minimum not zero price
+                if (tokenPrice == 0) {
+                    tokenPrice = _price;
+                } else {
+                    if (_price > 0 && _price < tokenPrice) {
+                        tokenPrice = _price;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @dev get component token amount in passed amount of LP token
+     * @param lp addres of LP token
+     * @param lpAmount amount of LP token
+     * @param component component token address (of LP)
+     */
+    function getTokenAmountinLP(
+        address lp,
+        uint256 lpAmount,
+        address component
+    ) public view returns (uint256 tokenAmount) {
+        tokenAmount = (IERC20(component).balanceOf(lp) * lpAmount) / IERC20(lp).totalSupply();
     }
 
     function getStakedTokens(address wallet) public view returns (address[] memory tokens) {

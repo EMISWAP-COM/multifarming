@@ -159,15 +159,25 @@ describe("Farming", function () {
         await RewardPool.deployed();
 
         /* add routes
+            (weth)-usdt
             wbtc-weth-usdt
             esw-weth-usdt
             uni-wbtc-weth-usdt
             wmatic-esw-weth-usdt
         */
-        await RewardPool.addRoutes([wbtc.address, weth.address, usdt.address]);
-        await RewardPool.addRoutes([esw.address, weth.address, usdt.address]);
-        await RewardPool.addRoutes([uni.address, wbtc.address, weth.address, usdt.address]);
-        await RewardPool.addRoutes([wmatic.address, esw.address, weth.address, usdt.address]);
+
+        let routes = [
+            [usdt.address],
+            [weth.address, usdt.address],
+            [wbtc.address, weth.address, usdt.address],
+            [esw.address, weth.address, usdt.address],
+            [uni.address, wbtc.address, weth.address, usdt.address],
+            [wmatic.address, esw.address, weth.address, usdt.address],
+        ];
+
+        for (const i of routes.keys()) {
+            await RewardPool.addRoutes(routes[i]);
+        }
 
         // try to deactivate route
         let routeArr = [wmatic.address, esw.address, weth.address, usdt.address];
@@ -185,17 +195,13 @@ describe("Farming", function () {
         expect(resgetRouteAfter.isActiveRes).to.be.equal(false);
 
         // try to duplicate
-        await expect(RewardPool.addRoutes([wbtc.address, weth.address, usdt.address])).to.be.revertedWith(
-            "route already added"
-        );
+        await expect(RewardPool.addRoutes([weth.address, usdt.address])).to.be.revertedWith("route already added");
 
         // try to add route not to usdt
-        await expect(RewardPool.addRoutes([wbtc.address, weth.address, uni.address])).to.be.revertedWith(
-            "set route to stable"
-        );
+        await expect(RewardPool.addRoutes([weth.address, uni.address])).to.be.revertedWith("set route to stable");
 
-        // try to add route from ton owner
-        await expect(RewardPool.connect(Alice).addRoutes([esw.address, weth.address, usdt.address])).to.be.revertedWith(
+        // try to add route from not owner
+        await expect(RewardPool.connect(Alice).addRoutes([weth.address, usdt.address])).to.be.revertedWith(
             "Ownable: caller is not the owner"
         );
 
@@ -250,14 +256,93 @@ describe("Farming", function () {
         await wbtc.connect(Alice).approve(RewardPool.address, tokens("10"));
 
         // incorrect stake
-        await expect(RewardPool.connect(Alice).stake(wbtc.address, tokens(10), tokens(10))).to.be.revertedWith("token incorrect or not LP");
-        
-        // correct stake 
+        await expect(RewardPool.connect(Alice).stake(wbtc.address, tokens(10), tokens(10))).to.be.revertedWith(
+            "token incorrect or not LP"
+        );
+
+        // correct stake
         await RewardPool.connect(Alice).stake(wbtc_weth_pool.address, tokens(10), tokens(10));
         await RewardPool.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), tokens(1));
 
-        console.log("Alice stakes", await RewardPool.getStakedTokens(Alice.address));
-        console.log("Bob stakes", await RewardPool.getStakedTokens(Bob.address));
+        /* console.log("Alice stakes", await RewardPool.getStakedTokens(Alice.address));
+        console.log("Bob stakes", await RewardPool.getStakedTokens(Bob.address)); */
+
+        // get WETH tokens in some LP tokens for LP wbtc-weth Add liquidity (100:10000)
+        // 10000000000000000001000 LP has 100e8 WBTC and 10000e18 WETH
+        // 100000000000000000 LP has 99999 WBTC 99999999999999999 WETH
+        // 10000000000000000000000 WETH on LP * 100000000000000000 LP / 10000000000000000001000 LP = 99999999999999999 WETH
+        let resComponentWETH = await RewardPool.getTokenAmountinLP(
+            wbtc_weth_pool.address,
+            "100000000000000000",
+            weth.address
+        );
+        // 10000000000 WBTC on LP * 100000000000000000 LP / 10000000000000000001000 LP = 99999 WBTC
+        let resComponentWBTC = await RewardPool.getTokenAmountinLP(
+            wbtc_weth_pool.address,
+            "100000000000000000",
+            wbtc.address
+        );
+
+        expect(
+            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(10000, 18), weth.address)
+        ).to.be.equal("9999999999999999999000");
+        expect(
+            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(10000, 18), wbtc.address)
+        ).to.be.equal("9999999999");
+        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(1, 18), weth.address)).to.be.equal(
+            "999999999999999999"
+        );
+        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(1, 18), wbtc.address)).to.be.equal(
+            "999999"
+        );
+        expect(
+            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "100000000000000000", weth.address)
+        ).to.be.equal("99999999999999999");
+        expect(
+            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "100000000000000000", wbtc.address)
+        ).to.be.equal("99999");
+        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "10000000000000", wbtc.address)).to.be.equal(
+            "9"
+        );
+        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "1000000000000", wbtc.address)).to.be.equal(
+            "0"
+        );
+        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "1000000000000", weth.address)).to.be.equal(
+            "999999999999"
+        );
+        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "100", weth.address)).to.be.equal("99");
+
+        let resTokenPrice = await RewardPool.getTokenPrice(weth.address);
+        console.log("resTokenPrice", resTokenPrice.toString());
+
+        let resTokenPriceArr = [];
+        for (const i of routes.keys()) {
+            resTokenPriceArr.push(await RewardPool.getAmountOut(tokens("1"), [weth.address].concat(routes[i])));
+        }
+
+        console.log("resTokenPriceArr[0]", resTokenPriceArr[0].toString(), "resTokenPrice", resTokenPrice.toString());
+
+        // weth.address -> usdt.address is 1999800019
+        expect(resTokenPriceArr[0]).to.be.equal(resTokenPrice);
+
+        console.log(
+            "1 WBTC = ",
+            (await RewardPool.getAmountOut(tokensDec("1", 8), [wbtc.address, weth.address, usdt.address])).toString(),
+            "USDT"
+        );
+        console.log(
+            "1 WETH = ",
+            (await RewardPool.getAmountOut(tokensDec("1", 18), [weth.address, usdt.address])).toString(),
+            "USDT"
+        );
+
+        /* for (const i of resTokenPriceArr.keys()) {
+            console.log("i %s price %s", i, resTokenPriceArr[i].toString());
+        } */
+
+        let resLPValue = await RewardPool.getLPValue(wbtc_weth_pool.address, tokens("1"));
+        console.log("resLPValue %s", resLPValue.toString()); // 3921564704 via WBTC
+        //3999600037 via WETH
 
         /*expect((await RewardPool.getStakedValuesinUSD(Alice.address))[0].toString()).to.be.equal("19999900");
         expect((await RewardPool.getStakedValuesinUSD(Alice.address))[1].toString()).to.be.equal("59999700");
