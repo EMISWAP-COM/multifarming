@@ -11,7 +11,7 @@
     "prettier-test": "npx prettier --write test --print-width 120 --tab-width 4",
     "prettier-scripts": "npx prettier --write scripts --print-width 120 --tab-width 4",
     "prettier-sol": "prettier --write \"contracts/**/*.sol\" --print-width 120 --tab-width 4",
-    "contract-flatten": "npx hardhat flatten contracts/RewardPool.sol > flat/RewardPool.flat.sol"
+    "contract-flatten": "npx hardhat flatten contracts/RewardPoolMulti.sol > flat/RewardPoolMulti.flat.sol"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^3.4.0",

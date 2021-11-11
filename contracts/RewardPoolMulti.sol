@@ -8,9 +8,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IRewardDistributionRecipient.sol";
 import "./LPTokenWrapper.sol";
 
-//import "hardhat/console.sol";
-
-contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuard {
+contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuard {
     uint256 public totalStakeLimit; // max value in USD coin (last in route), rememeber decimals!
     address[] public route;
     uint8 marketID;
@@ -18,7 +16,7 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
 
     IERC20 public rewardToken;
     uint256 public minPriceAmount;
-    uint256 public constant DURATION = 90 days;
+    uint256 public duration = 90 days;
 
     uint256 public periodFinish = 0;
     uint256 public periodStop = 0;
@@ -38,13 +36,19 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
      * @dev seting main farming config
      * @param _rewardToken reward token, staketoken (first stake token) is the same
      * @param _rewardAdmin reward administrator
+     * @param _emiFactory emifactory contract address
+     * @param _stableCoin stable token contract addres
+     * @param _duration farming duration from start
+     * @param _exitTimeOut exit and withdraw stakes allowed only when time passed from first wallet stake
      */
 
     constructor(
         address _rewardToken,
         address _rewardAdmin,
         address _emiFactory,
-        address _stableCoin
+        address _stableCoin,
+        uint256 _duration,
+        uint256 _exitTimeOut
     ) public {
         rewardToken = IERC20(_rewardToken);
         stakeToken = _rewardToken;
@@ -52,9 +56,8 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         stakeTokens.push(_rewardToken);
         emiFactory = IEmiswapRegistry(_emiFactory);
         stableCoin = _stableCoin;
-        //console.log("1 stakeTokens %s", stakeToken);
-        //console.log("1 stakeTokens.length %s", stakeTokens.length);
-        //minPriceAmount = _minPriceAmount;
+        duration = _duration;
+        exitTimeOut = _exitTimeOut;
     }
 
     modifier updateReward(address account) {
@@ -66,18 +69,6 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         }
         _;
     }
-
-    /* function setEmiPriceData(address _emiFactory, address[] memory _route) public onlyOwner {
-        if (emiFactory != _emiFactory) {
-            emiFactory = _emiFactory;
-        }
-        if (route.length > 0) {
-            delete route;
-        }
-        for (uint256 index = 0; index < _route.length; index++) {
-            route.push(_route[index]);
-        }
-    } */
 
     function setMinPriceAmount(uint256 newMinPriceAmount) public onlyOwner {
         minPriceAmount = newMinPriceAmount;
@@ -119,8 +110,6 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         require(amount > 0, "Cannot stake 0");
         require(block.timestamp <= periodFinish && block.timestamp <= periodStop, "Cannot stake yet");
         super.stake(lp, lpAmount, amount);
-        //(, uint256 totalStake) = getStakedValuesinUSD(msg.sender);
-        //console.log("stake: totalStakeLimit %s totalStake %s amount %s", totalStakeLimit, totalStake, amount);
         emit Staked(msg.sender, amount);
     }
 
@@ -136,27 +125,27 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         getReward();
     }
 
-    function getReward() public nonReentrant updateReward(msg.sender) {
-        /* uint256 reward = earned(msg.sender);
+    function getReward() internal nonReentrant updateReward(msg.sender) {
+        uint256 reward = earned(msg.sender);
         if (reward > 0) {
             rewards[msg.sender] = 0;
             rewardToken.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
-        } */
+        }
     }
 
     // use it after create and approve of reward token
 
     function notifyRewardAmount(uint256 reward) external override onlyRewardDistribution updateReward(address(0)) {
         if (block.timestamp >= periodFinish) {
-            rewardRate = reward.div(DURATION);
+            rewardRate = reward.div(duration);
         } else {
             uint256 remaining = periodFinish.sub(block.timestamp);
             uint256 leftover = remaining.mul(rewardRate);
-            rewardRate = reward.add(leftover).div(DURATION);
+            rewardRate = reward.add(leftover).div(duration);
         }
         lastUpdateTime = block.timestamp;
-        periodFinish = block.timestamp.add(DURATION);
+        periodFinish = block.timestamp.add(duration);
         periodStop = periodFinish;
         rewardToken.safeTransferFrom(msg.sender, address(this), reward);
         emit RewardAdded(reward);
@@ -175,36 +164,16 @@ contract RewardPool is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyG
         periodStop = _periodStop;
     }
 
+    /**
+     * @dev get staked values nominated in stable coin for the wallet and for all
+     * @param wallet wallet for getting staked value
+     * @return senderStake staked value for the wallet
+     * @return totalStake staked value for all wallet on the contract
+     */
     function getStakedValuesinUSD(address wallet) public view returns (uint256 senderStake, uint256 totalStake) {
-        uint256 price = getAmountOut(minPriceAmount, route); /*1e18 default value of ESW, first of route always ESW*/
-        // simple ERC-20
-        if (tokenMode == 0) {
-            senderStake = balanceOfStakeToken(wallet).mul(price).div(minPriceAmount);
-            totalStake = totalSupply().mul(price).div(minPriceAmount);
-        }
-        if (tokenMode == 1) {
-            /*uint256 lpFractionWallet = balanceOf(wallet).mul(1e18).div(stakeToken.totalSupply());
-            uint256 lpFractionTotal = totalSupply().mul(1e18).div(stakeToken.totalSupply());
-            uint256 ESWreserveWallet = IEmiswap(address(stakeToken)).getBalanceForAddition( IERC20(route[0]) ).mul(2).mul(lpFractionWallet).div(1e18);
-            uint256 ESWreserveTotal = IEmiswap(address(stakeToken)).getBalanceForAddition( IERC20(route[0]) ).mul(2).mul(lpFractionTotal).div(1e18);
-            senderStake = ESWreserveWallet.mul(price).div(minPriceAmount);
-            totalStake = ESWreserveTotal.mul(price).div(minPriceAmount);*/
-
-            senderStake = IEmiswap(stakeToken)
-                .getBalanceForAddition(IERC20(route[0]))
-                .mul(2)
-                .mul(balanceOfStakeToken(wallet).mul(1e18).div(IERC20(stakeToken).totalSupply()))
-                .div(1e18)
-                .mul(price)
-                .div(minPriceAmount);
-            totalStake = IEmiswap(stakeToken)
-                .getBalanceForAddition(IERC20(route[0]))
-                .mul(2)
-                .mul(totalSupply().mul(1e18).div(IERC20(stakeToken).totalSupply()))
-                .div(1e18)
-                .mul(price)
-                .div(minPriceAmount);
-        }
+        uint256 oneStakeToken = 10**uint256(IERC20Extented(stakeToken).decimals());
+        senderStake = balanceOfStakeToken(wallet).mul(getTokenPrice(stakeToken)).div(oneStakeToken);
+        totalStake = totalSupply().mul(getTokenPrice(stakeToken)).div(oneStakeToken);
     }
 
     function getAmountOut(uint256 amountIn, address[] memory path) public view returns (uint256) {

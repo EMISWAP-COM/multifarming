@@ -6,7 +6,7 @@ const { tokens, tokensDec } = require("../utils/utils");
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 describe("Farming", function () {
-    let MockLP, esw, usdt, weth, RewardPool, emiRouter, emiFactory;
+    let MockLP, esw, usdt, weth, RewardPoolMulti, emiRouter, emiFactory;
     before(async () => {
         [owner, Alice, Bob, Clarc] = await ethers.getSigners();
     });
@@ -154,9 +154,16 @@ describe("Farming", function () {
     });
 
     it("run reward simple ERC-20", async function () {
-        const REWARDPOOL = await ethers.getContractFactory("RewardPool");
-        RewardPool = await REWARDPOOL.deploy(esw.address, owner.address, emiFactory.address, usdt.address);
-        await RewardPool.deployed();
+        const REWARDPOOLMULTI = await ethers.getContractFactory("RewardPoolMulti");
+        RewardPoolMulti = await REWARDPOOLMULTI.deploy(
+            esw.address,
+            owner.address,
+            emiFactory.address,
+            usdt.address,
+            90 * 24 * 60 * 60,
+            30 * 24 * 60 * 60
+        );
+        await RewardPoolMulti.deployed();
 
         /* add routes
             (weth)-usdt
@@ -176,14 +183,14 @@ describe("Farming", function () {
         ];
 
         for (const i of routes.keys()) {
-            await RewardPool.addRoutes(routes[i]);
+            await RewardPoolMulti.addRoutes(routes[i]);
         }
 
         // try to deactivate route
         let routeArr = [wmatic.address, esw.address, weth.address, usdt.address];
-        let resgetRouteBefore = await RewardPool.connect(Alice).getRoute(routeArr);
-        await RewardPool.activationRoute(routeArr, false);
-        let resgetRouteAfter = await RewardPool.connect(Alice).getRoute(routeArr);
+        let resgetRouteBefore = await RewardPoolMulti.connect(Alice).getRoute(routeArr);
+        await RewardPoolMulti.activationRoute(routeArr, false);
+        let resgetRouteAfter = await RewardPoolMulti.connect(Alice).getRoute(routeArr);
 
         // check route correctness
         for (const iterator of routeArr.keys()) {
@@ -195,38 +202,38 @@ describe("Farming", function () {
         expect(resgetRouteAfter.isActiveRes).to.be.equal(false);
 
         // try to duplicate
-        await expect(RewardPool.addRoutes([weth.address, usdt.address])).to.be.revertedWith("route already added");
+        await expect(RewardPoolMulti.addRoutes([weth.address, usdt.address])).to.be.revertedWith("route already added");
 
         // try to add route not to usdt
-        await expect(RewardPool.addRoutes([weth.address, uni.address])).to.be.revertedWith("set route to stable");
+        await expect(RewardPoolMulti.addRoutes([weth.address, uni.address])).to.be.revertedWith("set route to stable");
 
         // try to add route from not owner
-        await expect(RewardPool.connect(Alice).addRoutes([weth.address, usdt.address])).to.be.revertedWith(
+        await expect(RewardPoolMulti.connect(Alice).addRoutes([weth.address, usdt.address])).to.be.revertedWith(
             "Ownable: caller is not the owner"
         );
 
-        /* await RewardPool.setEmiPriceData(
+        /* await RewardPoolMulti.setEmiPriceData(
             emiFactory.address, // kovan factory
             [esw.address, weth.address, usdt.address]
         ); */
 
-        await esw.approve(RewardPool.address, tokensDec(1_000_000, 18));
-        await RewardPool.notifyRewardAmount(tokensDec(1_000_000, 18));
+        await esw.approve(RewardPoolMulti.address, tokensDec(1_000_000, 18));
+        await RewardPoolMulti.notifyRewardAmount(tokensDec(1_000_000, 18));
 
-        console.log("rewardRate", (await RewardPool.rewardRate()).toString());
+        console.log("rewardRate", (await RewardPoolMulti.rewardRate()).toString());
 
         // owner send by 1_000_000 to Alice and Bob
 
         await esw.transfer(Alice.address, tokens(1_000_000));
         await esw.transfer(Bob.address, tokens(1_000_000));
-        await esw.connect(Alice).approve(RewardPool.address, tokens(100));
-        await esw.connect(Bob).approve(RewardPool.address, tokens(200));
+        await esw.connect(Alice).approve(RewardPoolMulti.address, tokens(100));
+        await esw.connect(Bob).approve(RewardPoolMulti.address, tokens(200));
 
         let pools = await emiRouter.getPoolDataList([wbtc.address, wbtc.address], [uni.address, weth.address]);
         let wbtc_uni_pool = await lpInstance.attach(pools[0].pool);
         let wbtc_weth_pool = await lpInstance.attach(pools[1].pool);
 
-        //await RewardPool.connect(Alice).stake(, tokens(100), tokens(100));
+        //await RewardPoolMulti.connect(Alice).stake(, tokens(100), tokens(100));
         console.log(
             "wbtc_uni_pool (40 BTC + 100000 UNI = )",
             (await wbtc_uni_pool.balanceOf(owner.address)).toString(),
@@ -249,75 +256,71 @@ describe("Farming", function () {
         await wbtc_weth_pool.transfer(Bob.address, tokens("1"));
 
         // prepare for staking
-        await wbtc_weth_pool.connect(Alice).approve(RewardPool.address, tokens("10"));
-        await wbtc_weth_pool.connect(Bob).approve(RewardPool.address, tokens("1"));
+        await wbtc_weth_pool.connect(Alice).approve(RewardPoolMulti.address, tokens("10"));
+        await wbtc_weth_pool.connect(Bob).approve(RewardPoolMulti.address, tokens("1"));
         // prepare for incorrect stake
         await wbtc.transfer(Alice.address, tokensDec("10", 8));
-        await wbtc.connect(Alice).approve(RewardPool.address, tokens("10"));
+        await wbtc.connect(Alice).approve(RewardPoolMulti.address, tokens("10"));
 
         // incorrect stake
-        await expect(RewardPool.connect(Alice).stake(wbtc.address, tokens(10), tokens(10))).to.be.revertedWith(
+        await expect(RewardPoolMulti.connect(Alice).stake(wbtc.address, tokens(10), tokens(10))).to.be.revertedWith(
             "token incorrect or not LP"
         );
 
-        // correct stake
-        await RewardPool.connect(Alice).stake(wbtc_weth_pool.address, tokens(10), tokens(10));
-        await RewardPool.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), tokens(1));
-
-        /* console.log("Alice stakes", await RewardPool.getStakedTokens(Alice.address));
-        console.log("Bob stakes", await RewardPool.getStakedTokens(Bob.address)); */
+        /* console.log("Alice stakes", await RewardPoolMulti.getStakedTokens(Alice.address));
+        console.log("Bob stakes", await RewardPoolMulti.getStakedTokens(Bob.address)); */
 
         // get WETH tokens in some LP tokens for LP wbtc-weth Add liquidity (100:10000)
         // 10000000000000000001000 LP has 100e8 WBTC and 10000e18 WETH
         // 100000000000000000 LP has 99999 WBTC 99999999999999999 WETH
         // 10000000000000000000000 WETH on LP * 100000000000000000 LP / 10000000000000000001000 LP = 99999999999999999 WETH
-        let resComponentWETH = await RewardPool.getTokenAmountinLP(
+        let resComponentWETH = await RewardPoolMulti.getTokenAmountinLP(
             wbtc_weth_pool.address,
             "100000000000000000",
             weth.address
         );
         // 10000000000 WBTC on LP * 100000000000000000 LP / 10000000000000000001000 LP = 99999 WBTC
-        let resComponentWBTC = await RewardPool.getTokenAmountinLP(
+        let resComponentWBTC = await RewardPoolMulti.getTokenAmountinLP(
             wbtc_weth_pool.address,
             "100000000000000000",
             wbtc.address
         );
 
         expect(
-            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(10000, 18), weth.address)
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(10000, 18), weth.address)
         ).to.be.equal("9999999999999999999000");
         expect(
-            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(10000, 18), wbtc.address)
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(10000, 18), wbtc.address)
         ).to.be.equal("9999999999");
-        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(1, 18), weth.address)).to.be.equal(
-            "999999999999999999"
-        );
-        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(1, 18), wbtc.address)).to.be.equal(
-            "999999"
-        );
         expect(
-            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "100000000000000000", weth.address)
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(1, 18), weth.address)
+        ).to.be.equal("999999999999999999");
+        expect(
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, tokensDec(1, 18), wbtc.address)
+        ).to.be.equal("999999");
+        expect(
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "100000000000000000", weth.address)
         ).to.be.equal("99999999999999999");
         expect(
-            await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "100000000000000000", wbtc.address)
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "100000000000000000", wbtc.address)
         ).to.be.equal("99999");
-        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "10000000000000", wbtc.address)).to.be.equal(
-            "9"
-        );
-        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "1000000000000", wbtc.address)).to.be.equal(
-            "0"
-        );
-        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "1000000000000", weth.address)).to.be.equal(
-            "999999999999"
-        );
-        expect(await RewardPool.getTokenAmountinLP(wbtc_weth_pool.address, "100", weth.address)).to.be.equal("99");
+        expect(
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "10000000000000", wbtc.address)
+        ).to.be.equal("9");
+        expect(
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "1000000000000", wbtc.address)
+        ).to.be.equal("0");
+        expect(
+            await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "1000000000000", weth.address)
+        ).to.be.equal("999999999999");
+        expect(await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "100", weth.address)).to.be.equal("99");
 
-        let resTokenPrice = await RewardPool.getTokenPrice(weth.address);
+        let resTokenPrice = await RewardPoolMulti.getTokenPrice(weth.address);
         console.log("resTokenPrice", resTokenPrice.toString());
 
         let resTokenPriceArr = [];
         for (const i of routes.keys()) {
-            resTokenPriceArr.push(await RewardPool.getAmountOut(tokens("1"), [weth.address].concat(routes[i])));
+            resTokenPriceArr.push(await RewardPoolMulti.getAmountOut(tokens("1"), [weth.address].concat(routes[i])));
         }
 
         console.log("resTokenPriceArr[0]", resTokenPriceArr[0].toString(), "resTokenPrice", resTokenPrice.toString());
@@ -327,58 +330,62 @@ describe("Farming", function () {
 
         console.log(
             "1 WBTC = ",
-            (await RewardPool.getAmountOut(tokensDec("1", 8), [wbtc.address, weth.address, usdt.address])).toString(),
+            (
+                await RewardPoolMulti.getAmountOut(tokensDec("1", 8), [wbtc.address, weth.address, usdt.address])
+            ).toString(),
             "USDT"
         );
         console.log(
             "1 WETH = ",
-            (await RewardPool.getAmountOut(tokensDec("1", 18), [weth.address, usdt.address])).toString(),
+            (await RewardPoolMulti.getAmountOut(tokensDec("1", 18), [weth.address, usdt.address])).toString(),
             "USDT"
         );
 
-        /* for (const i of resTokenPriceArr.keys()) {
-            console.log("i %s price %s", i, resTokenPriceArr[i].toString());
-        } */
-
-        let resLPValue = await RewardPool.getLPValue(wbtc_weth_pool.address, tokens("1"));
+        let resLPValue = await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"));
         console.log("resLPValue %s", resLPValue.toString()); // 3921564704 via WBTC
         //3999600037 via WETH
 
-        /*expect((await RewardPool.getStakedValuesinUSD(Alice.address))[0].toString()).to.be.equal("19999900");
-        expect((await RewardPool.getStakedValuesinUSD(Alice.address))[1].toString()).to.be.equal("59999700");
+        let resESW = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
+        let resLP = await RewardPoolMulti.getLPValuebyStake(wbtc_weth_pool.address, resESW);
+        // differ between 1LP and reversed LP must be equal or lower than 0.000000000255000256
+        expect(BigNumber.from(tokens("1")).sub(resLP)).to.be.at.most("255000256");
+
+        // correct stake
+        let resESWfor10LP = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("10"));
+        console.log("resESWfor10LP", resESWfor10LP.toString());
+
+        await esw.connect(Alice).approve(RewardPoolMulti.address, resESWfor10LP);
+        await RewardPoolMulti.connect(Alice).stake(wbtc_weth_pool.address, tokens(10), resESWfor10LP);
+
+        let resESWfor1LP = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
+        await esw.connect(Bob).approve(RewardPoolMulti.address, resESWfor1LP);
+        await RewardPoolMulti.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), resESWfor1LP);
+
+        /* expect((await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[0].toString()).to.be.equal(resESWfor10LP);
+        expect((await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[1].toString()).to.be.equal("59999700"); */
 
         console.log(
             "USD balances, Alice's",
-            (await RewardPool.getStakedValuesinUSD(Alice.address))[0].toString(),
+            (await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[0].toString(),
             "whole balance",
-            (await RewardPool.getStakedValuesinUSD(Alice.address))[1].toString()
-        ); */
+            (await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[1].toString()
+        );
 
-        // TODO: get prices between tokens on stake
-        // TODO: make reward and test it
-
-        await network.provider.send("evm_increaseTime", [2592000]); // 30 days to pass
+        await network.provider.send("evm_increaseTime", [90 * 24 * 60 * 60]); // 30 days to pass
         await network.provider.send("evm_mine");
 
-        await RewardPool.connect(Alice).getReward();
-        await RewardPool.connect(Bob).getReward();
+        let eswAliceBeforeExit = await esw.balanceOf(Alice.address);
+        let eswBobBeforeExit = await esw.balanceOf(Bob.address);
 
-        console.log("totalSupply", (await RewardPool.totalSupply()).toString());
-        console.log("Alice earned()", (await RewardPool.earned(Alice.address)).toString());
-        console.log("Bob earned()", (await RewardPool.earned(Bob.address)).toString());
+        await RewardPoolMulti.connect(Alice).exit();
+        await RewardPoolMulti.connect(Bob).exit();
 
-        await network.provider.send("evm_increaseTime", [2592000]); // 30 days to pass
-        await network.provider.send("evm_mine");
+        let eswAliceAfterExit = await esw.balanceOf(Alice.address);
+        let eswBobAfterExit = await esw.balanceOf(Bob.address);
 
-        console.log("totalSupply", (await RewardPool.totalSupply()).toString());
-        console.log("Alice earned()", (await RewardPool.earned(Alice.address)).toString());
-        console.log("Bob earned()", (await RewardPool.earned(Bob.address)).toString());
-
-        await RewardPool.connect(Alice).exit();
-        await RewardPool.connect(Bob).exit();
-
-        console.log("totalSupply", (await RewardPool.totalSupply()).toString());
-        console.log("Alice total earned", (await esw.balanceOf(Alice.address)).toString());
-        console.log("Bob total earned", (await esw.balanceOf(Bob.address)).toString());
+        console.log("totalSupply", (await RewardPoolMulti.totalSupply()).toString());
+        console.log("ESW on farming", (await esw.balanceOf(RewardPoolMulti.address)).toString());
+        console.log("Alice total earned", eswAliceAfterExit.sub(eswAliceBeforeExit).toString());
+        console.log("Bob total earned", eswBobAfterExit.sub(eswBobBeforeExit).toString());
     });
 });

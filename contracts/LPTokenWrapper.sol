@@ -2,7 +2,7 @@
 
 pragma solidity ^0.6.2;
 
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -16,6 +16,11 @@ interface IERC20Extented is IERC20 {
 contract LPTokenWrapper {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
+
+    // minimal time to be passed from wallet first stake to allow exit
+    uint256 public exitTimeOut = 30 days;
+
+    mapping(address => uint256) public exitLimits;
 
     // Stable coin
     address public stableCoin;
@@ -111,45 +116,87 @@ contract LPTokenWrapper {
      * @dev stake two tokens: lp and stake token (esw)
      * @param lp lp token address
      * @param lpAmount lp token amount
-     * @param amount stake token amount
+     * @param amountMax stake token maximum amount to take in
      */
 
     function stake(
         address lp,
         uint256 lpAmount,
-        uint256 amount
+        uint256 amountMax
     ) public virtual {
         require(emiFactory.isPool(lp), "token incorrect or not LP");
-        // TODO: is LP token has price in USDT?
-        // get tokens
-        IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), amount);
+
+        // calc needful stake token amount
+        uint256 stakeTokenAmount = getStakeValuebyLP(lp, lpAmount);
+        require(stakeTokenAmount <= amountMax, "not enough stake token amount");
+
+        IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), stakeTokenAmount);
         IERC20(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
 
         // incease total supply in stake token
-        _totalSupply = _totalSupply.add(amount);
+        _totalSupply = _totalSupply.add(stakeTokenAmount);
 
         // set balances
-        _balances[msg.sender][stakeToken] = _balances[msg.sender][stakeToken].add(amount);
+        _balances[msg.sender][stakeToken] = _balances[msg.sender][stakeToken].add(stakeTokenAmount);
         _balances[msg.sender][lp] = _balances[msg.sender][lp].add(lpAmount);
         // save lp token stake, and also stakeToken by default
         if (tokensIndex[lp] == 0) {
             stakeTokens.push(lp);
             tokensIndex[lp] = stakeTokens.length;
         }
+        // if first stake, save exit timeout
+        if (exitLimits[msg.sender] == 0) {
+            exitLimits[msg.sender] = block.timestamp + exitTimeOut;
+        }
     }
 
-    function getLPValue(address _lp, uint256 _lpAmount) public view returns (uint256 lpValue) {
+    /**
+     * @dev calcilate stake value from LP token amount
+     * @param _lp LP token address
+     * @param _lpAmount LP token amount
+     * @return  stakeValue LP amount value nominated in stake tokens
+     */
+
+    function getStakeValuebyLP(address _lp, uint256 _lpAmount) public view returns (uint256 stakeValue) {
+        uint256 lpInStable = getLPValueInStable(_lp, _lpAmount);
+        uint256 stakeTokenPrice = getTokenPrice(stakeToken);
+        uint256 oneStakeTokenValue = 10**uint256(IERC20Extented(stakeToken).decimals());
+        stakeValue = oneStakeTokenValue.mul(lpInStable).div(stakeTokenPrice);
+    }
+
+    /**
+     * @dev calcilate LP value from stake token amount, function is reverse to getStakeValuebyLP
+     * @param _lp LP token address
+     * @param _amount stake token amount
+     * @return lpValue stake amount value nominated in LP tokens
+     */
+
+    function getLPValuebyStake(address _lp, uint256 _amount) public view returns (uint256 lpValue) {
+        uint256 oneLpAmount = 10**uint256(IERC20Extented(_lp).decimals());
+        uint256 oneStakeToken = 10**uint256(IERC20Extented(stakeToken).decimals());
+        uint256 oneLPInStable = getLPValueInStable(_lp, oneLpAmount);
+        uint256 stakeTokenValueinStable = _amount.mul(getTokenPrice(stakeToken)).div(oneStakeToken);
+        lpValue = oneLpAmount.mul(stakeTokenValueinStable).div(oneLPInStable);
+    }
+
+    /**
+     * @dev get LP value in stable coins
+     * @param _lp lp address
+     * @param _lpAmount lp tokens amount
+     */
+
+    function getLPValueInStable(address _lp, uint256 _lpAmount) public view returns (uint256 lpValueInStable) {
         for (uint256 i = 0; i < 1; i++) {
             address componentToken = address(IEmiswap(_lp).tokens(i));
             uint256 oneTokenValue = 10**uint256(IERC20Extented(componentToken).decimals());
             uint256 tokenPrice = getTokenPrice(componentToken);
             uint256 tokensInLP = getTokenAmountinLP(_lp, _lpAmount, componentToken);
             // calc token value from one of parts and multiply 2
-            lpValue = 2 * ((tokensInLP * tokenPrice) / oneTokenValue);
-            if (lpValue > 0) {
+            lpValueInStable = tokensInLP.mul(tokenPrice).mul(2).div(oneTokenValue);
+            if (lpValueInStable > 0) {
                 break;
             }
-        } 
+        }
     }
 
     /**
@@ -159,11 +206,10 @@ contract LPTokenWrapper {
     function getTokenPrice(address token) public view returns (uint256 tokenPrice) {
         require(IERC20Extented(token).decimals() > 0, "token must have decimals");
         uint256 oneTokenValue = 10**uint256(IERC20Extented(token).decimals());
-        
+
         // go throuout all path and find minimal token price > 0
         for (uint256 i = 0; i < routeToStable.length; i++) {
             if (routeToStable[i].isActive) {
-                
                 // route must not contain token
                 bool skipRoute;
                 for (uint256 k = 0; k < routeToStable[i].route.length; k++) {
@@ -175,7 +221,7 @@ contract LPTokenWrapper {
                 if (skipRoute) {
                     break;
                 }
-                
+
                 // prepare route to get price from token
                 address[] memory route = new address[](routeToStable[i].route.length + 1);
                 route[0] = token;
@@ -185,7 +231,7 @@ contract LPTokenWrapper {
 
                 // get price by route
                 uint256 _price = EmiswapLib.getAmountsOut(address(emiFactory), oneTokenValue, route)[route.length - 1];
-                
+
                 // choose minimum not zero price
                 if (tokenPrice == 0) {
                     tokenPrice = _price;
@@ -209,8 +255,14 @@ contract LPTokenWrapper {
         uint256 lpAmount,
         address component
     ) public view returns (uint256 tokenAmount) {
-        tokenAmount = (IERC20(component).balanceOf(lp) * lpAmount) / IERC20(lp).totalSupply();
+        tokenAmount = IERC20(component).balanceOf(lp).mul(lpAmount).div(IERC20(lp).totalSupply());
     }
+
+    /**
+     * @dev get staked tokens by wallet
+     * @param wallet address
+     * @return tokens list of staked tokens
+     */
 
     function getStakedTokens(address wallet) public view returns (address[] memory tokens) {
         if (wallet == address(0)) {
@@ -235,7 +287,11 @@ contract LPTokenWrapper {
         }
     }
 
-    function withdraw() public virtual {
+    /**
+     * @dev withdraw all staked tokens at once and reset exit date limits
+     */
+
+    function withdraw() internal virtual {
         uint256 amount = _balances[msg.sender][stakeToken];
 
         // set balances
@@ -245,5 +301,8 @@ contract LPTokenWrapper {
             IERC20(stakeTokens[index]).safeTransfer(msg.sender, _balances[msg.sender][stakeTokens[index]]);
             _balances[msg.sender][stakeTokens[index]] = 0;
         }
+
+        // reset exit date limits
+        exitLimits[msg.sender] = 0;
     }
 }
