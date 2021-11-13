@@ -186,7 +186,7 @@ contract LPTokenWrapper {
      */
 
     function getLPValueInStable(address _lp, uint256 _lpAmount) public view returns (uint256 lpValueInStable) {
-        for (uint256 i = 0; i < 1; i++) {
+        for (uint256 i = 0; i <= 1; i++) {
             address componentToken = address(IEmiswap(_lp).tokens(i));
             uint256 oneTokenValue = 10**uint256(IERC20Extented(componentToken).decimals());
             uint256 tokenPrice = getTokenPrice(componentToken);

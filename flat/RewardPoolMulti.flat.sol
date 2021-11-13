@@ -37,8 +37,6 @@ library Math {
 
 // File @openzeppelin/contracts/token/ERC20/IERC20.sol@v3.4.2
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity >=0.6.0 <0.8.0;
 
 /**
@@ -118,8 +116,6 @@ interface IERC20 {
 
 // File @openzeppelin/contracts/utils/ReentrancyGuard.sol@v3.4.2
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity >=0.6.0 <0.8.0;
 
 /**
@@ -184,8 +180,6 @@ abstract contract ReentrancyGuard {
 
 // File @openzeppelin/contracts/utils/Context.sol@v3.4.2
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity >=0.6.0 <0.8.0;
 
 /*
@@ -211,8 +205,6 @@ abstract contract Context {
 
 
 // File @openzeppelin/contracts/access/Ownable.sol@v3.4.2
-
-// SPDX-License-Identifier: MIT
 
 pragma solidity >=0.6.0 <0.8.0;
 
@@ -283,8 +275,6 @@ abstract contract Ownable is Context {
 
 // File contracts/IRewardDistributionRecipient.sol
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity ^0.6.2;
 
 abstract contract IRewardDistributionRecipient is Ownable {
@@ -308,8 +298,6 @@ abstract contract IRewardDistributionRecipient is Ownable {
 
 
 // File @openzeppelin/contracts/math/SafeMath.sol@v3.4.2
-
-// SPDX-License-Identifier: MIT
 
 pragma solidity >=0.6.0 <0.8.0;
 
@@ -527,8 +515,6 @@ library SafeMath {
 
 // File @openzeppelin/contracts/utils/Address.sol@v3.4.2
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity >=0.6.2 <0.8.0;
 
 /**
@@ -720,8 +706,6 @@ library Address {
 
 // File @openzeppelin/contracts/token/ERC20/SafeERC20.sol@v3.4.2
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity >=0.6.0 <0.8.0;
 
 
@@ -797,8 +781,6 @@ library SafeERC20 {
 
 // File contracts/interfaces/IEmiswap.sol
 
-// SPDX-License-Identifier: UNLICENSED
-
 pragma solidity ^0.6.2;
 
 interface IEmiswapRegistry {
@@ -848,8 +830,6 @@ interface IEmiswap {
 
 
 // File contracts/libraries/EmiswapLib.sol
-
-// SPDX-License-Identifier: UNLICENSED
 
 pragma solidity ^0.6.2;
 
@@ -990,8 +970,6 @@ library EmiswapLib {
 
 
 // File contracts/LPTokenWrapper.sol
-
-// SPDX-License-Identifier: MIT
 
 pragma solidity ^0.6.2;
 
@@ -1178,10 +1156,10 @@ contract LPTokenWrapper {
      */
 
     function getLPValueInStable(address _lp, uint256 _lpAmount) public view returns (uint256 lpValueInStable) {
-        for (uint256 i = 0; i < 1; i++) {
+        for (uint256 i = 0; i <= 1; i++) {
             address componentToken = address(IEmiswap(_lp).tokens(i));
             uint256 oneTokenValue = 10**uint256(IERC20Extented(componentToken).decimals());
-            uint256 tokenPrice = getTokenPrice(componentToken);
+            uint256 tokenPrice = getTokenPrice(componentToken); // для USDC - ок, для USDT 0 всё 0
             uint256 tokensInLP = getTokenAmountinLP(_lp, _lpAmount, componentToken);
             // calc token value from one of parts and multiply 2
             lpValueInStable = tokensInLP.mul(tokenPrice).mul(2).div(oneTokenValue);
@@ -1302,8 +1280,6 @@ contract LPTokenWrapper {
 
 // File contracts/RewardPoolMulti.sol
 
-// SPDX-License-Identifier: MIT
-
 pragma solidity ^0.6.2;
 
 
@@ -1313,11 +1289,8 @@ pragma solidity ^0.6.2;
 contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuard {
     uint256 public totalStakeLimit; // max value in USD coin (last in route), rememeber decimals!
     address[] public route;
-    uint8 marketID;
-    uint8 id;
 
     IERC20 public rewardToken;
-    uint256 public minPriceAmount;
     uint256 public duration = 90 days;
 
     uint256 public periodFinish = 0;
@@ -1325,7 +1298,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
-    uint256 public tokenMode; // 0 = simple ERC20 token, 1 = Emiswap LP-token
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
@@ -1370,10 +1342,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
             userRewardPerTokenPaid[account] = rewardPerTokenStored;
         }
         _;
-    }
-
-    function setMinPriceAmount(uint256 newMinPriceAmount) public onlyOwner {
-        minPriceAmount = newMinPriceAmount;
     }
 
     function lastTimeRewardApplicable() public view returns (uint256) {

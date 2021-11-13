@@ -11,11 +11,8 @@ import "./LPTokenWrapper.sol";
 contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuard {
     uint256 public totalStakeLimit; // max value in USD coin (last in route), rememeber decimals!
     address[] public route;
-    uint8 marketID;
-    uint8 id;
 
     IERC20 public rewardToken;
-    uint256 public minPriceAmount;
     uint256 public duration = 90 days;
 
     uint256 public periodFinish = 0;
@@ -23,7 +20,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
-    uint256 public tokenMode; // 0 = simple ERC20 token, 1 = Emiswap LP-token
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
@@ -68,10 +64,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
             userRewardPerTokenPaid[account] = rewardPerTokenStored;
         }
         _;
-    }
-
-    function setMinPriceAmount(uint256 newMinPriceAmount) public onlyOwner {
-        minPriceAmount = newMinPriceAmount;
     }
 
     function lastTimeRewardApplicable() public view returns (uint256) {
