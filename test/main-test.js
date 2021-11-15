@@ -212,15 +212,8 @@ describe("Farming", function () {
             "Ownable: caller is not the owner"
         );
 
-        /* await RewardPoolMulti.setEmiPriceData(
-            emiFactory.address, // kovan factory
-            [esw.address, weth.address, usdt.address]
-        ); */
-
         await esw.approve(RewardPoolMulti.address, tokensDec(1_000_000, 18));
         await RewardPoolMulti.notifyRewardAmount(tokensDec(1_000_000, 18));
-
-        console.log("rewardRate", (await RewardPoolMulti.rewardRate()).toString());
 
         // owner send by 1_000_000 to Alice and Bob
 
@@ -230,26 +223,18 @@ describe("Farming", function () {
         await esw.connect(Bob).approve(RewardPoolMulti.address, tokens(200));
 
         let pools = await emiRouter.getPoolDataList([wbtc.address, wbtc.address], [uni.address, weth.address]);
-        let wbtc_uni_pool = await lpInstance.attach(pools[0].pool);
         let wbtc_weth_pool = await lpInstance.attach(pools[1].pool);
 
-        //await RewardPoolMulti.connect(Alice).stake(, tokens(100), tokens(100));
-        console.log(
-            "wbtc_uni_pool (40 BTC + 100000 UNI = )",
-            (await wbtc_uni_pool.balanceOf(owner.address)).toString(),
-            "has no direct price in USDT"
+        let resComponentWETH = await RewardPoolMulti.getTokenAmountinLP(
+            wbtc_weth_pool.address,
+            "10000000000000000000000",
+            weth.address
         );
-        console.log(
-            "wbtc_weth_pool (100 BTC + 10000 WETH ~ 20000 WETH ~ (using weth-usdt 1:2000) 40000000 USDT ), \ntotal LP's =",
-            (await wbtc_weth_pool.balanceOf(owner.address)).toString(),
-            "1 LP = ",
-            BigNumber.from("40000000000000")
-                .mul(BigNumber.from("1000000000000000000"))
-                .div(await wbtc_weth_pool.balanceOf(owner.address))
-                .div(BigNumber.from("1000000"))
-                .toString(),
-            "USDT"
-        );
+        expect(resComponentWETH).to.be.equal("9999999999999999999000");
+
+
+        // expect 10000 LP wbtc_weth_pool = 39215686270478 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("10000"))).to.be.equal("39215686270478");       
 
         // send 10 LP to Alice, 1 LP to Bob
         await wbtc_weth_pool.transfer(Alice.address, tokens("10"));
@@ -267,14 +252,11 @@ describe("Farming", function () {
             "token incorrect or not LP"
         );
 
-        /* console.log("Alice stakes", await RewardPoolMulti.getStakedTokens(Alice.address));
-        console.log("Bob stakes", await RewardPoolMulti.getStakedTokens(Bob.address)); */
-
         // get WETH tokens in some LP tokens for LP wbtc-weth Add liquidity (100:10000)
         // 10000000000000000001000 LP has 100e8 WBTC and 10000e18 WETH
         // 100000000000000000 LP has 99999 WBTC 99999999999999999 WETH
         // 10000000000000000000000 WETH on LP * 100000000000000000 LP / 10000000000000000001000 LP = 99999999999999999 WETH
-        let resComponentWETH = await RewardPoolMulti.getTokenAmountinLP(
+        resComponentWETH = await RewardPoolMulti.getTokenAmountinLP(
             wbtc_weth_pool.address,
             "100000000000000000",
             weth.address
@@ -315,35 +297,18 @@ describe("Farming", function () {
         ).to.be.equal("999999999999");
         expect(await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "100", weth.address)).to.be.equal("99");
 
-        let resTokenPrice = await RewardPoolMulti.getTokenPrice(weth.address);
-        console.log("resTokenPrice", resTokenPrice.toString());
+        let resTokenPrice = await RewardPoolMulti.getTokenPrice(weth.address);        
 
         let resTokenPriceArr = [];
         for (const i of routes.keys()) {
             resTokenPriceArr.push(await RewardPoolMulti.getAmountOut(tokens("1"), [weth.address].concat(routes[i])));
         }
 
-        console.log("resTokenPriceArr[0]", resTokenPriceArr[0].toString(), "resTokenPrice", resTokenPrice.toString());
-
         // weth.address -> usdt.address is 1999800019
         expect(resTokenPriceArr[0]).to.be.equal(resTokenPrice);
-
-        console.log(
-            "1 WBTC = ",
-            (
-                await RewardPoolMulti.getAmountOut(tokensDec("1", 8), [wbtc.address, weth.address, usdt.address])
-            ).toString(),
-            "USDT"
-        );
-        console.log(
-            "1 WETH = ",
-            (await RewardPoolMulti.getAmountOut(tokensDec("1", 18), [weth.address, usdt.address])).toString(),
-            "USDT"
-        );
-
-        let resLPValue = await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"));
-        console.log("resLPValue %s", resLPValue.toString()); // 3921564704 via WBTC
-        //3999600037 via WETH
+        
+        //3921564705 via WBTC
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3921564705")
 
         let resESW = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
         let resLP = await RewardPoolMulti.getLPValuebyStake(wbtc_weth_pool.address, resESW);
@@ -352,7 +317,7 @@ describe("Farming", function () {
 
         // correct stake
         let resESWfor10LP = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("10"));
-        console.log("resESWfor10LP", resESWfor10LP.toString());
+        //console.log("resESWfor10LP", resESWfor10LP.toString());
 
         await esw.connect(Alice).approve(RewardPoolMulti.address, resESWfor10LP);
         await RewardPoolMulti.connect(Alice).stake(wbtc_weth_pool.address, tokens(10), resESWfor10LP);
@@ -360,17 +325,7 @@ describe("Farming", function () {
         let resESWfor1LP = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
         await esw.connect(Bob).approve(RewardPoolMulti.address, resESWfor1LP);
         await RewardPoolMulti.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), resESWfor1LP);
-
-        /* expect((await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[0].toString()).to.be.equal(resESWfor10LP);
-        expect((await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[1].toString()).to.be.equal("59999700"); */
-
-        console.log(
-            "USD balances, Alice's",
-            (await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[0].toString(),
-            "whole balance",
-            (await RewardPoolMulti.getStakedValuesinUSD(Alice.address))[1].toString()
-        );
-
+        
         await network.provider.send("evm_increaseTime", [90 * 24 * 60 * 60]); // 30 days to pass
         await network.provider.send("evm_mine");
 
@@ -383,7 +338,8 @@ describe("Farming", function () {
         let eswAliceAfterExit = await esw.balanceOf(Alice.address);
         let eswBobAfterExit = await esw.balanceOf(Bob.address);
 
-        console.log("totalSupply", (await RewardPoolMulti.totalSupply()).toString());
+        //console.log("totalSupply", (await RewardPoolMulti.totalSupply()).toString());
+        expect(await RewardPoolMulti.totalSupply()).to.be.equal("0");
         console.log("ESW on farming", (await esw.balanceOf(RewardPoolMulti.address)).toString());
         console.log("Alice total earned", eswAliceAfterExit.sub(eswAliceBeforeExit).toString());
         console.log("Bob total earned", eswBobAfterExit.sub(eswBobBeforeExit).toString());
