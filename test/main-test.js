@@ -1,6 +1,6 @@
 const { expect, assert } = require("chai");
 const { constants, utils, BigNumber } = require("ethers");
-const { ethers, network } = require("hardhat");
+const { ethers, network} = require("hardhat");
 const { tokens, tokensDec } = require("../utils/utils");
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -152,7 +152,7 @@ describe("Farming", function () {
             ZERO_ADDRESS
         );
 
-        const REWARDPOOLMULTI = await ethers.getContractFactory("RewardPoolMulti");
+        /* const REWARDPOOLMULTI = await ethers.getContractFactory("RewardPoolMulti");
         RewardPoolMulti = await REWARDPOOLMULTI.deploy(
             esw.address,
             owner.address,
@@ -161,6 +161,18 @@ describe("Farming", function () {
             90 * 24 * 60 * 60,
             30 * 24 * 60 * 60
         );
+        await RewardPoolMulti.deployed(); */
+
+        // Router
+        REWARDPOOLMULTI = await ethers.getContractFactory("RewardPoolMulti");
+        RewardPoolMulti = await upgrades.deployProxy(REWARDPOOLMULTI, [
+            esw.address,
+            owner.address,
+            emiFactory.address,
+            usdt.address,
+            90 * 24 * 60 * 60,
+            30 * 24 * 60 * 60
+        ]);
         await RewardPoolMulti.deployed();
 
         /* add routes
@@ -360,19 +372,17 @@ describe("Farming", function () {
         let pools = await emiRouter.getPoolDataList([wbtc.address, wbtc.address], [uni.address, weth.address]);
         let wbtc_weth_pool = await lpInstance.attach(pools[1].pool);
 
-        console.log("wbtc_weth_pool.totalSupply()", (await wbtc_weth_pool.totalSupply()).toString());
-
         // expect 1 LP wbtc_weth_pool = 3999.600037 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3999600037");
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3921564705");
 
         // expect 0.1 LP wbtc_weth_pool = 399.960003 USDT
         expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000000000")).to.be.equal(
-            "399960003"
+            "392152941"
         );
 
         // expect 0.0001 LP wbtc_weth_pool = 0.399960 USDT
         expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000000")).to.be.equal(
-            "399960"
+            "388235"
         );
 
         // expect 0.0000001 LP wbtc_weth_pool = 0.000399 USDT

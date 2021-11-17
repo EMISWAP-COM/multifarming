@@ -3,21 +3,21 @@
 pragma solidity ^0.6.2;
 
 import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "./IRewardDistributionRecipient.sol";
 import "./LPTokenWrapper.sol";
 
-contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuard {
+contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, ReentrancyGuardUpgradeable {
     uint256 public totalStakeLimit; // max value in USD coin (last in route), rememeber decimals!
     address[] public route;
 
-    IERC20 public rewardToken;
-    uint256 public duration = 90 days;
+    IERC20Upgradeable public rewardToken;
+    uint256 public duration;
 
-    uint256 public periodFinish = 0;
-    uint256 public periodStop = 0;
-    uint256 public rewardRate = 0;
+    uint256 public periodFinish;
+    uint256 public periodStop;
+    uint256 public rewardRate;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
     mapping(address => uint256) public userRewardPerTokenPaid;
@@ -35,17 +35,20 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
      * @param _exitTimeOut exit and withdraw stakes allowed only when time passed from first wallet stake
      */
 
-    constructor(
+    function initialize(
         address _rewardToken,
         address _rewardAdmin,
         address _emiFactory,
         address _stableCoin,
         uint256 _duration,
         uint256 _exitTimeOut
-    ) public {
-        rewardToken = IERC20(_rewardToken);
-        stakeToken = _rewardToken;
+    ) public virtual initializer {
+        __Ownable_init();
+        transferOwnership(_rewardAdmin);
         setRewardDistribution(_rewardAdmin);
+
+        rewardToken = IERC20Upgradeable(_rewardToken);
+        stakeToken = _rewardToken;
         stakeTokens.push(_rewardToken);
         emiFactory = IEmiswapRegistry(_emiFactory);
         stableCoin = _stableCoin;
@@ -185,6 +188,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
         require(tokenAddress != address(0), "address 0!");
         require(tokenAddress != address(stakeToken), "not staketoken");
 
-        return IERC20(tokenAddress).transfer(beneficiary, amount);
+        return IERC20Upgradeable(tokenAddress).transfer(beneficiary, amount);
     }
 }

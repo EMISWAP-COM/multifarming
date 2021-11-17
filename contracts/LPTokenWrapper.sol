@@ -4,21 +4,21 @@ pragma solidity ^0.6.2;
 
 //import "hardhat/console.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "./interfaces/IEmiswap.sol";
 import "./libraries/EmiswapLib.sol";
 
-interface IERC20Extented is IERC20 {
+interface IERC20Extented is IERC20Upgradeable {
     function decimals() external view returns (uint8);
 }
 
 contract LPTokenWrapper {
     using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     // minimal time to be passed from wallet first stake to allow exit
-    uint256 public exitTimeOut = 30 days;
+    uint256 public exitTimeOut;
 
     mapping(address => uint256) public exitLimits;
 
@@ -132,8 +132,8 @@ contract LPTokenWrapper {
         uint256 stakeTokenAmount = getStakeValuebyLP(lp, lpAmount);
         require(stakeTokenAmount > 0 && stakeTokenAmount <= amountMax, "not enough stake token amount");
 
-        IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), stakeTokenAmount);
-        IERC20(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
+        IERC20Upgradeable(stakeToken).safeTransferFrom(msg.sender, address(this), stakeTokenAmount);
+        IERC20Upgradeable(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
 
         // incease total supply in stake token
         _totalSupply = _totalSupply.add(stakeTokenAmount);
@@ -302,7 +302,7 @@ contract LPTokenWrapper {
         _totalSupply = _totalSupply.sub(amount);
 
         for (uint256 index = 0; index < stakeTokens.length; index++) {
-            IERC20(stakeTokens[index]).safeTransfer(msg.sender, _balances[msg.sender][stakeTokens[index]]);
+            IERC20Upgradeable(stakeTokens[index]).safeTransfer(msg.sender, _balances[msg.sender][stakeTokens[index]]);
             _balances[msg.sender][stakeTokens[index]] = 0;
         }
 
