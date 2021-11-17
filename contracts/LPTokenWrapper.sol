@@ -115,6 +115,18 @@ contract LPTokenWrapper {
     }
 
     /**
+     * @dev get route info by routeID
+     * @param routeID input route
+     * @return routeRes stored route if found
+     * @return isActiveRes is active flag
+     */
+
+    function getRouteInfo(uint256 routeID) public view returns (address[] memory routeRes, bool isActiveRes) {
+        routeRes = routeToStable[routeID].route;
+        isActiveRes = routeToStable[routeID].isActive;
+    }
+
+    /**
      * @dev stake two tokens: lp and stake token (esw)
      * @param lp lp token address
      * @param lpAmount lp token amount

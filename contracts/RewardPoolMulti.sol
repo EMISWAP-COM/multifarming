@@ -45,7 +45,7 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
     ) public virtual initializer {
         __Ownable_init();
         transferOwnership(_rewardAdmin);
-        setRewardDistribution(_rewardAdmin);
+        rewardDistribution = _rewardAdmin;
 
         rewardToken = IERC20Upgradeable(_rewardToken);
         stakeToken = _rewardToken;

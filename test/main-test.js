@@ -8,7 +8,7 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 describe("Farming", function () {
     let MockLP, esw, usdt, weth, RewardPoolMulti, emiRouter, emiFactory, routes;
     before(async () => {
-        [owner, Alice, Bob, Clarc] = await ethers.getSigners();
+        [deployer, owner, Alice, Bob, Clarc] = await ethers.getSigners();
     });
 
     beforeEach("Contracts created", async function () {
@@ -193,19 +193,29 @@ describe("Farming", function () {
         ];
 
         for (const i of routes.keys()) {
-            await RewardPoolMulti.addRoutes(routes[i]);
+            await RewardPoolMulti.connect(owner).addRoutes(routes[i]);
         }
 
         // start farming
-        await esw.approve(RewardPoolMulti.address, tokensDec(1_000_000, 18));
-        await RewardPoolMulti.notifyRewardAmount(tokensDec(1_000_000, 18));
+        await esw.transfer(owner.address, tokens(1_000_000));
+        await esw.connect(owner).approve(RewardPoolMulti.address, tokensDec(1_000_000, 18));
+        await RewardPoolMulti.connect(owner).notifyRewardAmount(tokensDec(1_000_000, 18));
+    });
+
+    it("check routes", async function () {
+        for (const i of routes.keys()) {
+            route = await RewardPoolMulti.getRouteInfo(i);
+            for (const r of route.routeRes.keys()) {
+                expect(route.routeRes[r]).to.be.equals(routes[i][r]);
+            }
+        }
     });
 
     it("run reward simple ERC-20", async function () {
         // try to deactivate route
         let routeArr = [wmatic.address, esw.address, weth.address, usdt.address];
         let resgetRouteBefore = await RewardPoolMulti.connect(Alice).getRoute(routeArr);
-        await RewardPoolMulti.activationRoute(routeArr, false);
+        await RewardPoolMulti.connect(owner).activationRoute(routeArr, false);
         let resgetRouteAfter = await RewardPoolMulti.connect(Alice).getRoute(routeArr);
 
         // check route correctness
@@ -218,10 +228,14 @@ describe("Farming", function () {
         expect(resgetRouteAfter.isActiveRes).to.be.equal(false);
 
         // try to duplicate
-        await expect(RewardPoolMulti.addRoutes([weth.address, usdt.address])).to.be.revertedWith("route already added");
+        await expect(RewardPoolMulti.connect(owner).addRoutes([weth.address, usdt.address])).to.be.revertedWith(
+            "route already added"
+        );
 
         // try to add route not to usdt
-        await expect(RewardPoolMulti.addRoutes([weth.address, uni.address])).to.be.revertedWith("set route to stable");
+        await expect(RewardPoolMulti.connect(owner).addRoutes([weth.address, uni.address])).to.be.revertedWith(
+            "set route to stable"
+        );
 
         // try to add route from not owner
         await expect(RewardPoolMulti.connect(Alice).addRoutes([weth.address, usdt.address])).to.be.revertedWith(
@@ -244,11 +258,6 @@ describe("Farming", function () {
             weth.address
         );
         expect(resComponentWETH).to.be.equal("9999999999999999999000");
-
-        // expect 10000 LP wbtc_weth_pool = 39215686270478 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("10000"))).to.be.equal(
-            "39215686270478"
-        );
 
         // send 10 LP to Alice, 1 LP to Bob
         await wbtc_weth_pool.transfer(Alice.address, tokens("10"));
@@ -321,8 +330,8 @@ describe("Farming", function () {
         // weth.address -> usdt.address is 1999800019
         expect(resTokenPriceArr[0]).to.be.equal(resTokenPrice);
 
-        //3921564705 via WBTC
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3921564705");
+        //3999600037 via WBTC
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3999600037");
 
         let resESW = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
         let resLP = await RewardPoolMulti.getLPValuebyStake(wbtc_weth_pool.address, resESW);
@@ -371,22 +380,6 @@ describe("Farming", function () {
 
         let pools = await emiRouter.getPoolDataList([wbtc.address, wbtc.address], [uni.address, weth.address]);
         let wbtc_weth_pool = await lpInstance.attach(pools[1].pool);
-
-        // expect 1 LP wbtc_weth_pool = 3999.600037 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3921564705");
-
-        // expect 0.1 LP wbtc_weth_pool = 399.960003 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000000000")).to.be.equal(
-            "392152941"
-        );
-
-        // expect 0.0001 LP wbtc_weth_pool = 0.399960 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000000")).to.be.equal(
-            "388235"
-        );
-
-        // expect 0.0000001 LP wbtc_weth_pool = 0.000399 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000")).to.be.equal("399");
 
         // expect 0.000000001 LP wbtc_weth_pool = 0.000003 USDT
         expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "1000000000")).to.be.equal("3");

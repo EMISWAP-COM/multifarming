@@ -533,7 +533,7 @@ abstract contract OwnableUpgradeable is Initializable, ContextUpgradeable {
 pragma solidity ^0.6.2;
 
 abstract contract IRewardDistributionRecipient is OwnableUpgradeable {
-    address rewardDistribution;
+    address public rewardDistribution;
 
     function notifyRewardAmount(uint256 reward) external virtual;
 
@@ -1458,6 +1458,18 @@ contract LPTokenWrapper {
     }
 
     /**
+     * @dev get route info by routeID
+     * @param routeID input route
+     * @return routeRes stored route if found
+     * @return isActiveRes is active flag
+     */
+
+    function getRouteInfo(uint256 routeID) public view returns (address[] memory routeRes, bool isActiveRes) {
+        routeRes = routeToStable[routeID].route;
+        isActiveRes = routeToStable[routeID].isActive;
+    }
+
+    /**
      * @dev stake two tokens: lp and stake token (esw)
      * @param lp lp token address
      * @param lpAmount lp token amount
@@ -1702,7 +1714,7 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
     ) public virtual initializer {
         __Ownable_init();
         transferOwnership(_rewardAdmin);
-        setRewardDistribution(_rewardAdmin);
+        rewardDistribution = _rewardAdmin;
 
         rewardToken = IERC20Upgradeable(_rewardToken);
         stakeToken = _rewardToken;
