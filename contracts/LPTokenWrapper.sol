@@ -54,6 +54,8 @@ contract LPTokenWrapper {
     // used stake tokens
     address[] public stakeTokens;
 
+    event Staked(address indexed user, address lp, uint256 lpAmount, uint256 amount);
+
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
@@ -128,7 +130,7 @@ contract LPTokenWrapper {
 
         // calc needful stake token amount
         uint256 stakeTokenAmount = getStakeValuebyLP(lp, lpAmount);
-        require(stakeTokenAmount <= amountMax, "not enough stake token amount");
+        require(stakeTokenAmount > 0 && stakeTokenAmount <= amountMax, "not enough stake token amount");
 
         IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), stakeTokenAmount);
         IERC20(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
@@ -148,6 +150,7 @@ contract LPTokenWrapper {
         if (exitLimits[msg.sender] == 0) {
             exitLimits[msg.sender] = block.timestamp + exitTimeOut;
         }
+        emit Staked(msg.sender, lp, lpAmount, stakeTokenAmount);
     }
 
     /**

@@ -24,15 +24,12 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
     mapping(address => uint256) public rewards;
 
     event RewardAdded(uint256 reward);
-    event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
 
     /**
      * @dev seting main farming config
-     * @param _rewardToken reward token, staketoken (first stake token) is the same
-     * @param _rewardAdmin reward administrator
-     * @param _emiFactory emifactory contract address
+     * @param _rewardToken reward token, staketokeStakedss
      * @param _stableCoin stable token contract addres
      * @param _duration farming duration from start
      * @param _exitTimeOut exit and withdraw stakes allowed only when time passed from first wallet stake
@@ -91,7 +88,7 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
      * @dev stake function, starts farming on stale, user stake two tokens: "Emiswap LP" + "ESW"
      * @param lp address of Emiswap LP token
      * @param lpAmount amount of Emiswap LP tokens
-     * @param amount amount of ESW tokens
+     * @param amount stake token maximum amount to take in
      */
 
     function stake(
@@ -102,7 +99,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
         require(amount > 0, "Cannot stake 0");
         require(block.timestamp <= periodFinish && block.timestamp <= periodStop, "Cannot stake yet");
         super.stake(lp, lpAmount, amount);
-        emit Staked(msg.sender, amount);
     }
 
     // TODO: т.к. общая ставка это ESW и множество LP то для простоты вывод делается только польностью

@@ -6,7 +6,7 @@ const { tokens, tokensDec } = require("../utils/utils");
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 describe("Farming", function () {
-    let MockLP, esw, usdt, weth, RewardPoolMulti, emiRouter, emiFactory;
+    let MockLP, esw, usdt, weth, RewardPoolMulti, emiRouter, emiFactory, routes;
     before(async () => {
         [owner, Alice, Bob, Clarc] = await ethers.getSigners();
     });
@@ -151,9 +151,7 @@ describe("Farming", function () {
             tokens("0"),
             ZERO_ADDRESS
         );
-    });
 
-    it("run reward simple ERC-20", async function () {
         const REWARDPOOLMULTI = await ethers.getContractFactory("RewardPoolMulti");
         RewardPoolMulti = await REWARDPOOLMULTI.deploy(
             esw.address,
@@ -173,7 +171,7 @@ describe("Farming", function () {
             wmatic-esw-weth-usdt
         */
 
-        let routes = [
+        routes = [
             [usdt.address],
             [weth.address, usdt.address],
             [wbtc.address, weth.address, usdt.address],
@@ -186,6 +184,12 @@ describe("Farming", function () {
             await RewardPoolMulti.addRoutes(routes[i]);
         }
 
+        // start farming
+        await esw.approve(RewardPoolMulti.address, tokensDec(1_000_000, 18));
+        await RewardPoolMulti.notifyRewardAmount(tokensDec(1_000_000, 18));
+    });
+
+    it("run reward simple ERC-20", async function () {
         // try to deactivate route
         let routeArr = [wmatic.address, esw.address, weth.address, usdt.address];
         let resgetRouteBefore = await RewardPoolMulti.connect(Alice).getRoute(routeArr);
@@ -212,9 +216,6 @@ describe("Farming", function () {
             "Ownable: caller is not the owner"
         );
 
-        await esw.approve(RewardPoolMulti.address, tokensDec(1_000_000, 18));
-        await RewardPoolMulti.notifyRewardAmount(tokensDec(1_000_000, 18));
-
         // owner send by 1_000_000 to Alice and Bob
 
         await esw.transfer(Alice.address, tokens(1_000_000));
@@ -232,9 +233,10 @@ describe("Farming", function () {
         );
         expect(resComponentWETH).to.be.equal("9999999999999999999000");
 
-
         // expect 10000 LP wbtc_weth_pool = 39215686270478 USDT
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("10000"))).to.be.equal("39215686270478");       
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("10000"))).to.be.equal(
+            "39215686270478"
+        );
 
         // send 10 LP to Alice, 1 LP to Bob
         await wbtc_weth_pool.transfer(Alice.address, tokens("10"));
@@ -297,7 +299,7 @@ describe("Farming", function () {
         ).to.be.equal("999999999999");
         expect(await RewardPoolMulti.getTokenAmountinLP(wbtc_weth_pool.address, "100", weth.address)).to.be.equal("99");
 
-        let resTokenPrice = await RewardPoolMulti.getTokenPrice(weth.address);        
+        let resTokenPrice = await RewardPoolMulti.getTokenPrice(weth.address);
 
         let resTokenPriceArr = [];
         for (const i of routes.keys()) {
@@ -306,9 +308,9 @@ describe("Farming", function () {
 
         // weth.address -> usdt.address is 1999800019
         expect(resTokenPriceArr[0]).to.be.equal(resTokenPrice);
-        
+
         //3921564705 via WBTC
-        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3921564705")
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3921564705");
 
         let resESW = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
         let resLP = await RewardPoolMulti.getLPValuebyStake(wbtc_weth_pool.address, resESW);
@@ -325,7 +327,7 @@ describe("Farming", function () {
         let resESWfor1LP = await RewardPoolMulti.getStakeValuebyLP(wbtc_weth_pool.address, tokens("1"));
         await esw.connect(Bob).approve(RewardPoolMulti.address, resESWfor1LP);
         await RewardPoolMulti.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), resESWfor1LP);
-        
+
         await network.provider.send("evm_increaseTime", [90 * 24 * 60 * 60]); // 30 days to pass
         await network.provider.send("evm_mine");
 
@@ -343,5 +345,50 @@ describe("Farming", function () {
         console.log("ESW on farming", (await esw.balanceOf(RewardPoolMulti.address)).toString());
         console.log("Alice total earned", eswAliceAfterExit.sub(eswAliceBeforeExit).toString());
         console.log("Bob total earned", eswBobAfterExit.sub(eswBobBeforeExit).toString());
+    });
+
+    it("stake minimal values", async () => {
+        // owner send by 1_000_000 to Alice
+        await esw.transfer(Alice.address, tokens(1_000_000));
+        await esw.connect(Alice).approve(RewardPoolMulti.address, tokens(100));
+
+        let pools = await emiRouter.getPoolDataList([wbtc.address, wbtc.address], [uni.address, weth.address]);
+        let wbtc_weth_pool = await lpInstance.attach(pools[1].pool);
+
+        console.log("wbtc_weth_pool.totalSupply()", (await wbtc_weth_pool.totalSupply()).toString());
+
+        // expect 1 LP wbtc_weth_pool = 3999.600037 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, tokens("1"))).to.be.equal("3999600037");
+
+        // expect 0.1 LP wbtc_weth_pool = 399.960003 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000000000")).to.be.equal(
+            "399960003"
+        );
+
+        // expect 0.0001 LP wbtc_weth_pool = 0.399960 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000000")).to.be.equal(
+            "399960"
+        );
+
+        // expect 0.0000001 LP wbtc_weth_pool = 0.000399 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000000")).to.be.equal("399");
+
+        // expect 0.000000001 LP wbtc_weth_pool = 0.000003 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "1000000000")).to.be.equal("3");
+
+        // expect 0.0000000001 LP wbtc_weth_pool = 0.000000 USDT
+        expect(await RewardPoolMulti.getLPValueInStable(wbtc_weth_pool.address, "100000000")).to.be.equal("0");
+
+        // prepare wbtc_weth_pool LP for staking
+        await wbtc_weth_pool.transfer(Alice.address, tokens("1"));
+        await wbtc_weth_pool.connect(Alice).approve(RewardPoolMulti.address, tokens("1"));
+
+        // stake 0.000000001 LP wbtc_weth_pool = 0.000003 USDT of LP that greater than 0.000001 USDT
+        await RewardPoolMulti.connect(Alice).stake(wbtc_weth_pool.address, "1000000000", tokens(1));
+
+        // stake 0.0000000001 LP wbtc_weth_pool = 0.000000 USDT of LP smaller that smaller than 0.000001 USDT
+        await expect(
+            RewardPoolMulti.connect(Alice).stake(wbtc_weth_pool.address, "100000000", tokens(1))
+        ).to.be.revertedWith("not enough stake token amount");
     });
 });

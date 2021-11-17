@@ -37,6 +37,8 @@ library Math {
 
 // File @openzeppelin/contracts/token/ERC20/IERC20.sol@v3.4.2
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity >=0.6.0 <0.8.0;
 
 /**
@@ -116,6 +118,8 @@ interface IERC20 {
 
 // File @openzeppelin/contracts/utils/ReentrancyGuard.sol@v3.4.2
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity >=0.6.0 <0.8.0;
 
 /**
@@ -180,6 +184,8 @@ abstract contract ReentrancyGuard {
 
 // File @openzeppelin/contracts/utils/Context.sol@v3.4.2
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity >=0.6.0 <0.8.0;
 
 /*
@@ -205,6 +211,8 @@ abstract contract Context {
 
 
 // File @openzeppelin/contracts/access/Ownable.sol@v3.4.2
+
+// SPDX-License-Identifier: MIT
 
 pragma solidity >=0.6.0 <0.8.0;
 
@@ -275,6 +283,8 @@ abstract contract Ownable is Context {
 
 // File contracts/IRewardDistributionRecipient.sol
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.6.2;
 
 abstract contract IRewardDistributionRecipient is Ownable {
@@ -298,6 +308,8 @@ abstract contract IRewardDistributionRecipient is Ownable {
 
 
 // File @openzeppelin/contracts/math/SafeMath.sol@v3.4.2
+
+// SPDX-License-Identifier: MIT
 
 pragma solidity >=0.6.0 <0.8.0;
 
@@ -515,6 +527,8 @@ library SafeMath {
 
 // File @openzeppelin/contracts/utils/Address.sol@v3.4.2
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity >=0.6.2 <0.8.0;
 
 /**
@@ -706,6 +720,8 @@ library Address {
 
 // File @openzeppelin/contracts/token/ERC20/SafeERC20.sol@v3.4.2
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity >=0.6.0 <0.8.0;
 
 
@@ -781,6 +797,8 @@ library SafeERC20 {
 
 // File contracts/interfaces/IEmiswap.sol
 
+// SPDX-License-Identifier: UNLICENSED
+
 pragma solidity ^0.6.2;
 
 interface IEmiswapRegistry {
@@ -830,6 +848,8 @@ interface IEmiswap {
 
 
 // File contracts/libraries/EmiswapLib.sol
+
+// SPDX-License-Identifier: UNLICENSED
 
 pragma solidity ^0.6.2;
 
@@ -971,6 +991,8 @@ library EmiswapLib {
 
 // File contracts/LPTokenWrapper.sol
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.6.2;
 
 //import "hardhat/console.sol";
@@ -1023,6 +1045,8 @@ contract LPTokenWrapper {
     mapping(address => uint256) internal tokensIndex;
     // used stake tokens
     address[] public stakeTokens;
+
+    event Staked(address indexed user, address lp, uint256 lpAmount, uint256 amount);
 
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
@@ -1098,7 +1122,7 @@ contract LPTokenWrapper {
 
         // calc needful stake token amount
         uint256 stakeTokenAmount = getStakeValuebyLP(lp, lpAmount);
-        require(stakeTokenAmount <= amountMax, "not enough stake token amount");
+        require(stakeTokenAmount > 0 && stakeTokenAmount <= amountMax, "not enough stake token amount");
 
         IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), stakeTokenAmount);
         IERC20(lp).safeTransferFrom(msg.sender, address(this), lpAmount);
@@ -1118,6 +1142,7 @@ contract LPTokenWrapper {
         if (exitLimits[msg.sender] == 0) {
             exitLimits[msg.sender] = block.timestamp + exitTimeOut;
         }
+        emit Staked(msg.sender, lp, lpAmount, stakeTokenAmount);
     }
 
     /**
@@ -1159,7 +1184,7 @@ contract LPTokenWrapper {
         for (uint256 i = 0; i <= 1; i++) {
             address componentToken = address(IEmiswap(_lp).tokens(i));
             uint256 oneTokenValue = 10**uint256(IERC20Extented(componentToken).decimals());
-            uint256 tokenPrice = getTokenPrice(componentToken); // для USDC - ок, для USDT 0 всё 0
+            uint256 tokenPrice = getTokenPrice(componentToken);
             uint256 tokensInLP = getTokenAmountinLP(_lp, _lpAmount, componentToken);
             // calc token value from one of parts and multiply 2
             lpValueInStable = tokensInLP.mul(tokenPrice).mul(2).div(oneTokenValue);
@@ -1280,6 +1305,8 @@ contract LPTokenWrapper {
 
 // File contracts/RewardPoolMulti.sol
 
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.6.2;
 
 
@@ -1302,15 +1329,12 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
     mapping(address => uint256) public rewards;
 
     event RewardAdded(uint256 reward);
-    event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
 
     /**
      * @dev seting main farming config
-     * @param _rewardToken reward token, staketoken (first stake token) is the same
-     * @param _rewardAdmin reward administrator
-     * @param _emiFactory emifactory contract address
+     * @param _rewardToken reward token, staketokeStakedss
      * @param _stableCoin stable token contract addres
      * @param _duration farming duration from start
      * @param _exitTimeOut exit and withdraw stakes allowed only when time passed from first wallet stake
@@ -1369,7 +1393,7 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
      * @dev stake function, starts farming on stale, user stake two tokens: "Emiswap LP" + "ESW"
      * @param lp address of Emiswap LP token
      * @param lpAmount amount of Emiswap LP tokens
-     * @param amount amount of ESW tokens
+     * @param amount stake token maximum amount to take in
      */
 
     function stake(
@@ -1380,7 +1404,6 @@ contract RewardPoolMulti is LPTokenWrapper, IRewardDistributionRecipient, Reentr
         require(amount > 0, "Cannot stake 0");
         require(block.timestamp <= periodFinish && block.timestamp <= periodStop, "Cannot stake yet");
         super.stake(lp, lpAmount, amount);
-        emit Staked(msg.sender, amount);
     }
 
     // TODO: т.к. общая ставка это ESW и множество LP то для простоты вывод делается только польностью
