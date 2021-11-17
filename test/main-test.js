@@ -1,6 +1,6 @@
 const { expect, assert } = require("chai");
 const { constants, utils, BigNumber } = require("ethers");
-const { ethers, network} = require("hardhat");
+const { ethers, network } = require("hardhat");
 const { tokens, tokensDec } = require("../utils/utils");
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -171,7 +171,7 @@ describe("Farming", function () {
             emiFactory.address,
             usdt.address,
             90 * 24 * 60 * 60,
-            30 * 24 * 60 * 60
+            30 * 24 * 60 * 60,
         ]);
         await RewardPoolMulti.deployed();
 
