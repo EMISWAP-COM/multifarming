@@ -328,18 +328,17 @@ describe("Farming", function () {
         await esw.connect(Bob).approve(RewardPoolMulti.address, resESWfor1LP);
         await RewardPoolMulti.connect(Bob).stake(wbtc_weth_pool.address, tokens(1), resESWfor1LP);
 
-        await network.provider.send("evm_increaseTime", [60*60]); // 60 secs to pass
+        await network.provider.send("evm_increaseTime", [60 * 60]); // 60 secs to pass
         await network.provider.send("evm_mine");
 
         await expect(RewardPoolMulti.connect(Alice).exit()).to.be.revertedWith("withdraw blocked");
-        
 
         await network.provider.send("evm_increaseTime", [90 * 24 * 60 * 60]); // 30 days to pass
         await network.provider.send("evm_mine");
-        
+
         let eswAliceBeforeExit = await esw.balanceOf(Alice.address);
         let eswBobBeforeExit = await esw.balanceOf(Bob.address);
-        
+
         await RewardPoolMulti.connect(Alice).exit();
         await RewardPoolMulti.connect(Bob).exit();
 

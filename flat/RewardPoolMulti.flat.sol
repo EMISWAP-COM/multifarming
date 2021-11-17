@@ -1287,6 +1287,7 @@ contract LPTokenWrapper {
      */
 
     function withdraw() internal virtual {
+        require(block.timestamp >= exitLimits[msg.sender], "withdraw blocked");
         uint256 amount = _balances[msg.sender][stakeToken];
 
         // set balances
